@@ -49,18 +49,40 @@ crates/
 ui/                 application Tauri (fenêtre utilisateur) et admin web (même frontend)
 resolve-scripts/    scripts Python embarqués
 migrations/         SQL du serveur
+dev/                configuration de développement
 packaging/          pkg, msi, deb/rpm, image Docker (serveur et dépôt NAS)
 docs/               PLAN.md et notes techniques
 ```
 
 ## Commandes
 
-À compléter en phase 0. Prévoir au minimum :
+Le détail, avec les outils à installer, est dans `docs/developpement.md`.
 
+- `cargo xtask check` : les mêmes contrôles que la CI à chaque push. Étapes : `fmt`, `architecture`, `clippy`, `tests`, `migrations`, `frontend`, `python`, `deny`, `secrets`, `commits`. `cargo xtask check clippy tests` ne lance que les étapes citées.
 - `cargo xtask dev-server`, `cargo xtask dev-agent`, `cargo xtask dev-ui`
-- `cargo test --workspace`
-- `cargo xtask dist` (binaires et installeurs des cibles disponibles sur la machine)
-- `cargo xtask check` (les mêmes contrôles que la CI à chaque push : format, clippy, tests, migrations, frontend, scripts Python, `cargo deny`)
+- `cargo nextest run --workspace` pour les tests seuls
+- `cargo xtask schema` après l'ajout d'une migration, puis relire le diff de `migrations/schema.sql`
+- `cargo xtask dist` : binaires release de la machine dans `dist/<cible>/`, `--target <cible>` pour une autre cible. Les installeurs arrivent en phase 7.
+- `cargo xtask idle-bench` : mémoire et CPU de l'agent au repos, sous Linux
+- `cargo xtask hooks` : active le crochet `commit-msg`
+
+## État et décisions
+
+Phase 0 terminée. Les trois binaires démarrent, ouvrent leurs journaux et attendent l'arrêt. Aucune fonctionnalité du produit n'existe encore.
+
+- **Chaîne Rust figée** dans `rust-toolchain.toml`, pour que clippy ne change pas d'avis entre deux exécutions. Dependabot propose les montées de version.
+- **Versions des dépendances** déclarées une seule fois, dans `[workspace.dependencies]` du `Cargo.toml` racine.
+- **Ligne de commande** des trois binaires avec `lexopt`, pas `clap` : l'agent compte ses octets. `clap` reste réservé à `xtask`.
+- **Journaux** : `banc_platform::logging`, un fichier par jour. La file d'écriture est limitée à 1 024 lignes, la valeur par défaut coûtait 4 Mo au repos.
+- **`tracing` sans la macro `#[instrument]`** : elle tire une seconde version de `syn`, que `cargo deny` refuse.
+- **Migrations** : fichiers `migrations/NNNN_nom.sql`, embarqués dans `banc-server`. `migrations/schema.sql` garde le schéma obtenu et la CI le compare. Le dossier est vide jusqu'à la phase 1.
+- **Configuration du serveur** : `banc_server::config`, exemple commenté dans `packaging/server/banc-server.toml`. Une clé inconnue est refusée.
+- **Fenêtre Tauri** : pas encore de crate `ui/src-tauri`. Elle demanderait webkit2gtk dans tous les jobs Linux de la CI sans rien apporter avant la phase 1. `ui/` contient le frontend Svelte seul.
+- **TypeScript 6** : `svelte-check` et `typescript-eslint` n'acceptent pas encore la version 7.
+- **Portée des commits** facultative pour les types `docs`, `build`, `ci` et `chore`. Ligne `Refs:` obligatoire. Commits de Dependabot dispensés.
+- **Textes de l'interface** dans `ui/src/lib/i18n/fr.json`, lus par `t('cle')`.
+- **Scripts Python** : syntaxe Python 3.7 tant que le prototype P10 n'a pas répondu.
+- **Protection de `main`** : `.github/rulesets/main.json`, à importer dans GitHub. Voir `docs/ci.md`.
 
 ## Commits et CI
 
@@ -84,7 +106,7 @@ Le détail est dans la section 15 de `docs/PLAN.md`. À respecter à chaque fois
 - Chaque fonction qui compare un état local à un manifeste ou à une liste de fichiers a des tests. C'est le cœur du produit.
 - Toute écriture dans un fichier privé de Resolve (préférences, liste des bibliothèques) passe par `banc-resolve`, se fait Resolve fermé, garde une copie de sauvegarde, et vérifie d'abord que le format est celui attendu. Si le format a changé, ne rien écrire et passer en mode guidé.
 - Avant de coder une fonction qui dépend d'un comportement de Resolve, vérifie que le prototype correspondant de la section 12 du plan a une réponse dans `docs/prototypes.md`.
-- Mesure la mémoire et le CPU au repos à la fin de chaque phase (`cargo xtask idle-bench`, à créer en phase 1) et note le résultat dans `docs/mesures.md`.
+- Mesure la mémoire et le CPU au repos à la fin de chaque phase (`cargo xtask idle-bench`) et note le résultat dans `docs/mesures.md`.
 
 ## Ce qui ne se teste pas en CI
 

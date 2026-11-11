@@ -441,7 +441,7 @@ Acceptation :
 - Serveur : enrôlement, invitations, machines, endpoint et relais iroh, admin web minimal.
 - Agent : clé machine, connexion, signe de vie, service système, assistant de session, lien `banc://`, inventaire, détection de la version de Resolve.
 - Clé admin : génération dans l'application, phrase de récupération, empreinte dans l'invitation.
-- `cargo xtask idle-bench`.
+- `cargo xtask idle-bench` : la commande existe depuis la phase 0 pour l'agent sous Linux. L'étendre à l'assistant de session, à macOS et à Windows.
 
 Acceptation :
 - Une machine de chaque OS s'enrôle avec un lien, sans terminal.
@@ -622,10 +622,12 @@ Refs: phase 3, P5
 
 - **Types** : `feat`, `fix`, `refactor`, `perf`, `test`, `docs`, `build`, `ci`, `chore`.
 - **Portées**, une par commit, parmi : `server`, `agent`, `session`, `blobs`, `tunnel`, `resolve`, `platform`, `proto`, `ui`, `scripts`, `packaging`, `ci`, `docs`.
+- La portée est obligatoire pour `feat`, `fix`, `refactor`, `perf` et `test`. Elle est facultative pour `docs`, `build`, `ci` et `chore`, qui touchent souvent tout le dépôt.
 - **Description** en français, à l'infinitif, sans majuscule ni point final, 72 caractères au plus pour la première ligne.
 - Un changement cassant porte un `!` après la portée et une ligne `BREAKING CHANGE:` dans le corps.
 - Un commit fait une seule chose. Un refactor et une fonctionnalité vont dans deux commits.
-- Le pied de message cite la phase du plan, et le prototype s'il y en a un.
+- Le pied de message cite la phase du plan, et le prototype s'il y en a un. La ligne `Refs:` est obligatoire. Un travail de prototype seul s'écrit `Refs: P1, P2`.
+- Les commits de Dependabot gardent leur propre format et ne sont pas contrôlés.
 
 Exemples :
 
