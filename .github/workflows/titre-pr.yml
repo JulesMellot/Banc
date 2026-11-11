@@ -1,0 +1,28 @@
+# Le titre d'une PR devient le message du commit sur main (fusion en squash) :
+# il suit la même convention que les commits. Fichier séparé de pr.yml pour
+# qu'un titre corrigé ne relance pas la matrice des trois OS.
+name: Titre de la PR
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: titre-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  titre:
+    name: Titre de la PR
+    # Dependabot garde son propre format, comme pour les commits.
+    if: github.event.pull_request.user.login != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/rust
+      - env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: cargo xtask pr-title "$TITLE"

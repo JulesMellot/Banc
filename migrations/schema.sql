@@ -1,0 +1,2 @@
+-- Schéma obtenu après toutes les migrations.
+-- Écrit par `cargo xtask schema`, ne pas modifier à la main.

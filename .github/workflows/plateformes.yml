@@ -1,0 +1,64 @@
+# Les trois OS et les cinq cibles. Appelé par pr.yml et nightly.yml :
+# les minutes macOS et Windows coûtent plus cher, on ne les dépense pas à
+# chaque push.
+name: Plateformes
+
+on:
+  workflow_call:
+    inputs:
+      linux:
+        description: Lance aussi clippy et les tests sur Linux (déjà faits par ci.yml sur une PR).
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  tests:
+    name: Clippy et tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(inputs.linux && '["ubuntu-latest", "macos-latest", "windows-latest"]' || '["macos-latest", "windows-latest"]') }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/rust
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest@0.9.151
+      - run: cargo xtask check clippy tests
+
+  cibles:
+    name: Compilation (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            packages: gcc-aarch64-linux-gnu
+          - target: aarch64-apple-darwin
+            os: macos-latest
+          - target: x86_64-apple-darwin
+            os: macos-latest
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Installer le compilateur croisé
+        if: matrix.packages
+        run: sudo apt-get update && sudo apt-get install -y ${{ matrix.packages }}
+      - uses: ./.github/actions/rust
+        with:
+          targets: ${{ matrix.target }}
+          cache-key: ${{ matrix.target }}
+      - run: cargo xtask dist --target ${{ matrix.target }}

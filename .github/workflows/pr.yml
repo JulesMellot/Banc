@@ -1,0 +1,54 @@
+# À chaque PR et à chaque mise à jour d'une PR : tout ci.yml, plus ce qui
+# coûte plus cher. `PR prête` est le contrôle exigé par la protection de main.
+name: PR
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  plateformes:
+    uses: ./.github/workflows/plateformes.yml
+
+  repos:
+    name: Mesure au repos
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/rust
+        with:
+          cache-key: release
+      - run: cargo xtask idle-bench
+
+  # À brancher quand le produit existe (voir docs/ci.md) :
+  # tests d'intégration de bout en bout, serveur + dépôt + deux agents.
+
+  prete:
+    name: PR prête
+    if: always()
+    needs: [ci, plateformes, repos]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Vérifier que tous les contrôles ont réussi
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "résultats : $RESULTS"
+          for result in $RESULTS; do
+            if [ "$result" != "success" ]; then
+              exit 1
+            fi
+          done
