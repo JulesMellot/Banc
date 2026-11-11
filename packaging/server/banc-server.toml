@@ -1,0 +1,16 @@
+# Configuration de banc-server.
+# Lancement : banc-server --config /etc/banc/banc-server.toml
+# Un chemin relatif part du dossier de ce fichier. Une clé inconnue est refusée.
+
+# Dossier des données du serveur : la base SQLite (banc.sqlite) y est créée.
+data_dir = "/var/lib/banc"
+
+[logs]
+# Dossier des journaux, un fichier par jour. Par défaut : /var/log/banc.
+# dir = "/var/log/banc"
+
+# Niveau : error, warn, info, debug ou trace.
+level = "info"
+
+# Nombre de jours de journaux gardés.
+keep_days = 30

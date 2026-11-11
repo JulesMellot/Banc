@@ -1,0 +1,52 @@
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2021"
+rust-version = "1.97"
+publish = false
+license = "LicenseRef-Proprietaire"
+repository = "https://github.com/JulesMellot/Banc"
+
+[workspace.dependencies]
+banc-blobs = { path = "crates/banc-blobs" }
+banc-platform = { path = "crates/banc-platform" }
+banc-proto = { path = "crates/banc-proto" }
+banc-resolve = { path = "crates/banc-resolve" }
+banc-tunnel = { path = "crates/banc-tunnel" }
+
+anyhow = "1.0.104"
+clap = { version = "4", features = ["derive"] }
+include_dir = "0.7.4"
+lexopt = "0.3.2"
+# rusqlite suit la version acceptée par rusqlite_migration.
+rusqlite = { version = "0.41.0", features = ["bundled"] }
+rusqlite_migration = "2.7.0"
+serde = { version = "1.0.229", features = ["derive"] }
+tempfile = "3.27.0"
+thiserror = "2.0.21"
+tokio = { version = "1.54.1", default-features = false }
+toml = "1.2.1"
+# Sans la macro `#[instrument]`, qui tire une seconde version de `syn`.
+tracing = { version = "0.1.44", default-features = false, features = ["std"] }
+tracing-appender = "0.2"
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std"] }
+
+[workspace.lints.rust]
+unused_must_use = "deny"
+
+[workspace.lints.clippy]
+# CLAUDE.md : pas de `unwrap()` ni `expect()` hors tests (voir clippy.toml).
+unwrap_used = "deny"
+expect_used = "deny"
+dbg_macro = "deny"
+todo = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

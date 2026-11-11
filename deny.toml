@@ -1,0 +1,43 @@
+# Contrôles de `cargo deny check` (cargo xtask check deny).
+
+[graph]
+# Les cinq cibles livrées. Les dépendances des autres plateformes sont ignorées.
+targets = [
+  "x86_64-unknown-linux-gnu",
+  "aarch64-unknown-linux-gnu",
+  "aarch64-apple-darwin",
+  "x86_64-apple-darwin",
+  "x86_64-pc-windows-msvc",
+]
+all-features = true
+
+[advisories]
+version = 2
+yanked = "deny"
+
+[licenses]
+version = 2
+# Banc est un outil interne, distribué en binaire sur les postes : seules des
+# licences permissives sont admises. Ajouter une licence ici est une décision
+# à prendre en revue, pas un réflexe.
+allow = ["MIT", "Apache-2.0", "Unicode-3.0", "Zlib"]
+confidence-threshold = 0.9
+
+[licenses.private]
+# Les crates du workspace ne sont pas publiées.
+ignore = true
+
+[bans]
+multiple-versions = "deny"
+wildcards = "deny"
+allow-wildcard-paths = true
+# OpenSSL complique la compilation croisée des cinq cibles : TLS passe par rustls.
+deny = [
+  { crate = "openssl-sys", reason = "utiliser rustls" },
+  { crate = "native-tls", reason = "utiliser rustls" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
