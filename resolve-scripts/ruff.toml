@@ -1,0 +1,7 @@
+# La version de Python acceptée par Resolve n'est pas encore connue
+# (prototype P10). On vise la plus ancienne que ruff sait contrôler.
+target-version = "py37"
+line-length = 100
+
+[lint]
+select = ["E", "F", "W", "I", "B", "UP", "N", "S", "PL"]
