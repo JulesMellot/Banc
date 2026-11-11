@@ -1,5 +1,5 @@
 # Version figée pour que clippy ne change pas d'avis entre deux exécutions.
 # Dependabot propose la montée de version.
 [toolchain]
-channel = "1.97.0"
+channel = "1.99.1"
 components = ["rustfmt", "clippy"]
