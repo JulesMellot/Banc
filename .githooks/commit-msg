@@ -1,0 +1,4 @@
+#!/bin/sh
+# Refuse un message de commit hors convention (section 15 de docs/PLAN.md).
+# Activation : cargo xtask hooks
+exec cargo xtask commit-msg "$1"

@@ -1,0 +1,25 @@
+name: Rust
+description: Installe la chaîne Rust de rust-toolchain.toml et restaure le cache de compilation.
+inputs:
+  targets:
+    description: Cibles supplémentaires, séparées par des espaces.
+    default: ''
+  cache-key:
+    description: Clé qui distingue les caches de jobs différents.
+    default: ''
+runs:
+  using: composite
+  steps:
+    - name: Installer la chaîne Rust
+      shell: bash
+      env:
+        TARGETS: ${{ inputs.targets }}
+      run: |
+        rustup toolchain install
+        if [ -n "$TARGETS" ]; then
+          rustup target add $TARGETS
+        fi
+        rustc --version
+    - uses: Swatinem/rust-cache@v2
+      with:
+        key: ${{ inputs.cache-key }}
