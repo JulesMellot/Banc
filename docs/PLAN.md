@@ -151,8 +151,8 @@ Nobody creates a folder by hand.
 
 ```
 /Volumes/Banc/<project>/          (B:\<project>\ on Windows)
-  Rushes/J03/CamA/A001.braw      class original (J03: shoot day 3)
-  Rushes/J03/CamA/Proxy/A001.mov class proxy
+  Rushes/D03/CamA/A001.braw      class original (D03: shoot day 3)
+  Rushes/D03/CamA/Proxy/A001.mov class proxy
   Audio/                         class media
   Graphics/                      class media
   Media/                         class media (videos added outside ingest)
@@ -277,7 +277,7 @@ The cache is a fallback, not the normal path. It is used when no direct source e
 
 "Add rushes" button in Banc:
 
-1. Choice of source (card, disk, folder), shoot day and camera. Banc files them under `Rushes/J03/CamA/`, keeping the card's original structure.
+1. Choice of source (card, disk, folder), shoot day and camera. Banc files them under `Rushes/D03/CamA/`, keeping the card's original structure.
 2. Copy verified by hash. The card is never modified. A report is kept in `.banc/`.
 3. Originals sent to the depot.
 4. Proxy generation (see below) and publication.
@@ -623,7 +623,7 @@ Refs: phase 3, P5
 - **Types**: `feat`, `fix`, `refactor`, `perf`, `test`, `docs`, `build`, `ci`, `chore`.
 - **Scopes**, one per commit, among: `server`, `agent`, `session`, `blobs`, `tunnel`, `resolve`, `platform`, `proto`, `ui`, `scripts`, `packaging`, `ci`, `docs`.
 - The scope is required for `feat`, `fix`, `refactor`, `perf` and `test`. It is optional for `docs`, `build`, `ci` and `chore`, which often touch the whole repository.
-- **Description** in French, starting with an infinitive verb, no capital letter and no final period, 72 characters at most for the first line.
+- **Description** in English, starting with a verb in the imperative mood (`add`, not `added` or `adds`), no capital letter and no final period, 72 characters at most for the first line.
 - A breaking change carries a `!` after the scope and a `BREAKING CHANGE:` line in the body.
 - A commit does one thing. A refactor and a feature go in two commits.
 - The footer cites the plan phase, and the prototype if there is one. The `Refs:` line is required. Prototype work alone is written `Refs: P1, P2`.
@@ -632,11 +632,11 @@ Refs: phase 3, P5
 Examples:
 
 ```
-feat(blobs): choisir les sources directes avant le cache
-fix(tunnel): rouvrir le flux après une coupure du relais
-test(agent): couvrir le refus d'un manifeste mal signé
-ci: ajouter la mesure au repos sur les PR
-refactor(platform)!: regrouper les chemins Resolve par OS
+feat(blobs): prefer direct sources over the cache
+fix(tunnel): reopen the stream after a relay outage
+test(agent): cover the rejection of a badly signed manifest
+ci: add the idle measurement to PRs
+refactor(platform)!: group Resolve paths by OS
 ```
 
-Refused messages: `update`, `wip`, `fix bug`, `corrections`, or any message without a type.
+Refused messages: `update`, `wip`, `fix bug`, `corrections`, `feat(agent): added the heartbeat`, or any message without a type.

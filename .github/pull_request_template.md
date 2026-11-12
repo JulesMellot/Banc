@@ -1,4 +1,4 @@
-<!-- The title follows the commit convention: type(scope): description starting with an infinitive verb (in French) -->
+<!-- The title follows the commit convention: type(scope): imperative description -->
 
 ## Why
 

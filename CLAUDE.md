@@ -82,15 +82,15 @@ Phase 0 is done. The three binaries start, open their logs and wait for shutdown
 - **Commit scope** optional for the `docs`, `build`, `ci` and `chore` types. `Refs:` line required. Dependabot commits exempt.
 - **Interface text** in `ui/src/lib/i18n/fr.json`, read through `t('key')`.
 - **Python scripts**: Python 3.7 syntax until prototype P10 has answered.
-- **Protection of `main`**: `.github/rulesets/main.json`, to be imported into GitHub. See `docs/ci.md`.
-- **Languages**: documentation (README, `docs/`, this file) and code comments in English. Interface text and commit descriptions in French.
+- **Protection of `main`**: `.github/rulesets/main.json`, to be imported into GitHub. Required checks: `PR ready` and `PR title`. See `docs/ci.md`.
+- **Languages**: everything in English, except the values in `ui/src/lib/i18n/fr.json`, which are the French interface text. The keys of that file are in English.
 
 ## Commits and CI
 
 Details are in section 15 of `docs/PLAN.md`. To be followed every time:
 
 - Run `cargo xtask check` before every commit. Do not create a commit if it fails, and never bypass a check (`--no-verify`, an `#[allow]` added to silence clippy, a disabled test).
-- Messages in the `type(scope): description` format, description in French starting with an infinitive verb, 72 characters at most. Types: `feat`, `fix`, `refactor`, `perf`, `test`, `docs`, `build`, `ci`, `chore`. Scopes: `server`, `agent`, `session`, `blobs`, `tunnel`, `resolve`, `platform`, `proto`, `ui`, `scripts`, `packaging`, `ci`, `docs`.
+- Messages in the `type(scope): description` format, description in English starting with a verb in the imperative mood, 72 characters at most. Types: `feat`, `fix`, `refactor`, `perf`, `test`, `docs`, `build`, `ci`, `chore`. Scopes: `server`, `agent`, `session`, `blobs`, `tunnel`, `resolve`, `platform`, `proto`, `ui`, `scripts`, `packaging`, `ci`, `docs`.
 - A commit does one thing. The message footer cites the phase and the prototype (`Refs: phase 3, P5`).
 - Never push directly to `main`. One `type/short-topic` branch per task, then a PR whose title follows the same convention.
 - A PR is only ready when all checks are green. If a check fails, fix the cause.
@@ -103,7 +103,7 @@ Details are in section 15 of `docs/PLAN.md`. To be followed every time:
 - Every action that modifies the workstation writes a line to the local log and reports to the server.
 - A downloaded file is verified by its BLAKE3 hash before it is moved into place or executed. A file that does not match is deleted.
 - Secrets go into the OS keychain, never into a plain-text file.
-- Visible messages are in French, in a translation file.
+- Interface text is in French, in `ui/src/lib/i18n/fr.json`. Everything else (code, comments, logs, errors, command-line help, tests, docs, commits) is in English.
 - Every function that compares a local state with a manifest or a file list has tests. This is the heart of the product.
 - Every write to a private Resolve file (preferences, library list) goes through `banc-resolve`, happens with Resolve closed, keeps a backup copy, and first checks that the format is the expected one. If the format has changed, write nothing and switch to guided mode.
 - Before coding a function that depends on a Resolve behavior, check that the matching prototype in section 12 of the plan has an answer in `docs/prototypes.md`.

@@ -25,8 +25,8 @@ To build the Linux arm64 target from an amd64 machine, you also need `gcc-aarch6
 | `cargo xtask check clippy tests` | Only the steps listed |
 | `cargo xtask hooks` | Enables the repository's `commit-msg` hook |
 | `cargo xtask schema` | Rewrites `migrations/schema.sql` after adding a migration |
-| `cargo xtask dev-server` | Server with `dev/serveur.toml`, data in `.dev/` |
-| `cargo xtask dev-agent` | Agent in the foreground, logs in `.dev/journaux` |
+| `cargo xtask dev-server` | Server with `dev/server.toml`, data in `.dev/` |
+| `cargo xtask dev-agent` | Agent in the foreground, logs in `.dev/logs` |
 | `cargo xtask dev-ui` | Frontend in development mode |
 | `cargo xtask dist` | Release binaries for the current machine in `dist/<target>/` |
 | `cargo xtask dist --target <target>` | Same for another target, option can be repeated |
@@ -56,12 +56,12 @@ The full rule is in section 15 of `docs/PLAN.md`. The check lives in `crates/xta
 
 - the `type(scope): description` format and the lists of types and scopes;
 - the scope, required for `feat`, `fix`, `refactor`, `perf` and `test`;
-- the description, which starts with a lowercase French infinitive verb and ends without a period;
+- the description, which starts with a lowercase verb in the imperative mood and ends without a period;
 - the first line, 72 characters at most;
 - a `Refs: phase N` line in the body, with the prototype if there is one;
 - a `BREAKING CHANGE:` line when the title carries a `!`.
 
-The infinitive check looks at the ending of the first word. It stops `update` or `correction de`; it does not understand French.
+The imperative check looks at the ending of the first word. It stops `added`, `adding` or `fixes`; it does not understand English.
 
 Dependabot commits are exempt.
 
