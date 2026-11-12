@@ -4,10 +4,12 @@ Les prototypes sont décrits dans la section 12 de `docs/PLAN.md`. Chaque répon
 
 Règle de `CLAUDE.md` : on ne code pas une fonction qui dépend d'un comportement de Resolve tant que son prototype n'a pas de réponse ci-dessous. Si une réponse contredit une hypothèse du plan, on corrige le plan dans le même commit.
 
+Les marches à suivre sont dans `docs/prototypes/pN/README.md`, les scripts communs dans `docs/prototypes/scripts/`.
+
 | Prototype | Question | État |
 |---|---|---|
-| P1 | Chemins, Mapped Mount, préférences Media Storage | sans réponse |
-| P2 | Proxys sans originaux | sans réponse |
+| P1 | Chemins, Mapped Mount, préférences Media Storage | marche à suivre prête : [`prototypes/p1`](prototypes/p1/README.md) |
+| P2 | Proxys sans originaux | marche à suivre prête : [`prototypes/p2`](prototypes/p2/README.md) |
 | P3 | Bibliothèque partagée, clé `.resolvedbkey`, `SetCurrentDatabase` | sans réponse |
 | P4 | Collaboration à distance, latence acceptable | sans réponse |
 | P5 | Consolidation, `ReplaceClip`, chutier verrouillé, 10 000 clips | sans réponse |
