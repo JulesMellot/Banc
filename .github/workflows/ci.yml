@@ -62,7 +62,7 @@ jobs:
           tool: cargo-deny@0.20.2
       - run: cargo xtask check deny
 
-  depot:
+  history:
     name: Secrets and commit messages
     runs-on: ubuntu-latest
     steps:

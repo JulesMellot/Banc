@@ -1,5 +1,5 @@
 # On every PR and every PR update: all of ci.yml, plus what costs more.
-# `PR prête` is the check required by the protection of main.
+# `PR ready` is the check required by the protection of main.
 name: PR
 
 on:
@@ -20,10 +20,10 @@ jobs:
   ci:
     uses: ./.github/workflows/ci.yml
 
-  plateformes:
-    uses: ./.github/workflows/plateformes.yml
+  platforms:
+    uses: ./.github/workflows/platforms.yml
 
-  repos:
+  idle:
     name: Idle measurement
     runs-on: ubuntu-latest
     steps:
@@ -36,10 +36,10 @@ jobs:
   # To be wired up once the product exists (see docs/ci.md):
   # end-to-end integration tests, server + depot + two agents.
 
-  prete:
-    name: PR prête
+  ready:
+    name: PR ready
     if: always()
-    needs: [ci, plateformes, repos]
+    needs: [ci, platforms, idle]
     runs-on: ubuntu-latest
     steps:
       - name: Check that all checks succeeded

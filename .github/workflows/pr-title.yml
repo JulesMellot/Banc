@@ -1,8 +1,8 @@
 # A PR title becomes the commit message on main (squash merge), so it
 # follows the same convention as commits. Separate from pr.yml so that a
 # corrected title does not rerun the three-OS matrix.
-# The job name `Titre de la PR` is a required check in the main ruleset.
-name: Titre de la PR
+# The job name `PR title` is a required check in the main ruleset.
+name: PR title
 
 on:
   pull_request:
@@ -12,12 +12,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: titre-pr-${{ github.event.pull_request.number }}
+  group: pr-title-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
-  titre:
-    name: Titre de la PR
+  title:
+    name: PR title
     # Dependabot keeps its own format, as for commits.
     if: github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest

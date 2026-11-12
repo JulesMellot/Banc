@@ -15,12 +15,12 @@ env:
   CARGO_INCREMENTAL: 0
 
 jobs:
-  plateformes:
-    uses: ./.github/workflows/plateformes.yml
+  platforms:
+    uses: ./.github/workflows/platforms.yml
     with:
       linux: true
 
-  failles:
+  advisories:
     name: Known vulnerabilities (today's database)
     runs-on: ubuntu-latest
     steps:
@@ -34,10 +34,10 @@ jobs:
   # To be wired up in phase 3 (see docs/ci.md): long integration tests,
   # large files, network cut simulated during a transfer, resume.
 
-  alerte:
+  alert:
     name: Open an issue on failure
     if: failure() && github.event_name == 'schedule'
-    needs: [plateformes, failles]
+    needs: [platforms, advisories]
     runs-on: ubuntu-latest
     permissions:
       issues: write
