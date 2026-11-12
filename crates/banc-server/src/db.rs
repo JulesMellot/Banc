@@ -23,21 +23,21 @@ const SCHEMA_HEADER: &str = "\
 
 #[derive(Debug, thiserror::Error)]
 pub enum DbError {
-    #[error("migration mal nommée : {0} (attendu : NNNN_nom_en_minuscules.sql)")]
+    #[error("badly named migration: {0} (expected: NNNN_lowercase_name.sql)")]
     BadName(String),
-    #[error("numérotation des migrations : {found} trouvé là où {expected:04} est attendu")]
+    #[error("migration numbering: found {found} where {expected:04} is expected")]
     BadNumber { expected: u32, found: String },
-    #[error("migration {0} : le fichier n'est pas en UTF-8")]
+    #[error("migration {0}: the file is not UTF-8")]
     NotUtf8(String),
-    #[error("impossible de créer le dossier de la base {dir}")]
+    #[error("cannot create the database folder {dir}")]
     CreateDir {
         dir: PathBuf,
         #[source]
         source: std::io::Error,
     },
-    #[error("erreur SQLite")]
+    #[error("SQLite error")]
     Sqlite(#[from] rusqlite::Error),
-    #[error("migration refusée")]
+    #[error("migration refused")]
     Migration(#[from] rusqlite_migration::Error),
 }
 
@@ -144,17 +144,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn noms_de_migration() {
-        assert_eq!(migration_number("0001_socle.sql"), Some(1));
+    fn migration_names() {
+        assert_eq!(migration_number("0001_base.sql"), Some(1));
         assert_eq!(migration_number("0042_blob_locations_v2.sql"), Some(42));
         for name in [
-            "1_socle.sql",
-            "00001_socle.sql",
-            "0001-socle.sql",
+            "1_base.sql",
+            "00001_base.sql",
+            "0001-base.sql",
             "0001_.sql",
-            "0001_Socle.sql",
-            "0001_socle.txt",
-            "socle.sql",
+            "0001_Base.sql",
+            "0001_base.txt",
+            "base.sql",
             "schema.sql",
         ] {
             assert_eq!(migration_number(name), None, "{name}");
@@ -162,10 +162,10 @@ mod tests {
     }
 
     #[test]
-    fn ordre_d_application() {
+    fn application_order() {
         let files = vec![
             ("0002_machines.sql", "B"),
-            ("0001_socle.sql", "A"),
+            ("0001_base.sql", "A"),
             ("0003_invites.sql", "C"),
         ];
         assert_eq!(ordered(files).unwrap(), ["A", "B", "C"]);
@@ -173,8 +173,8 @@ mod tests {
     }
 
     #[test]
-    fn trou_dans_la_numerotation() {
-        let err = ordered(vec![("0001_socle.sql", ""), ("0003_invites.sql", "")]).unwrap_err();
+    fn gap_in_numbering() {
+        let err = ordered(vec![("0001_base.sql", ""), ("0003_invites.sql", "")]).unwrap_err();
         assert!(
             matches!(&err, DbError::BadNumber { expected: 2, found } if found == "0003_invites.sql"),
             "{err:?}"
@@ -187,8 +187,8 @@ mod tests {
     }
 
     #[test]
-    fn numero_en_double() {
-        let err = ordered(vec![("0001_socle.sql", ""), ("0001_autre.sql", "")]).unwrap_err();
+    fn duplicate_number() {
+        let err = ordered(vec![("0001_base.sql", ""), ("0001_other.sql", "")]).unwrap_err();
         assert!(
             matches!(err, DbError::BadNumber { expected: 2, .. }),
             "{err:?}"
@@ -196,15 +196,15 @@ mod tests {
     }
 
     #[test]
-    fn nom_refuse() {
-        let err = ordered(vec![("socle.sql", "")]).unwrap_err();
+    fn name_refused() {
+        let err = ordered(vec![("base.sql", "")]).unwrap_err();
         assert!(matches!(err, DbError::BadName(_)), "{err:?}");
     }
 
     #[test]
-    fn ouverture_cree_le_dossier_et_reste_rejouable() {
+    fn open_creates_the_folder_and_is_repeatable() {
         let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("donnees/banc.sqlite");
+        let path = tmp.path().join("data/banc.sqlite");
 
         let conn = open(&path).unwrap();
         let mode: String = conn
@@ -221,7 +221,7 @@ mod tests {
     }
 
     #[test]
-    fn schema_trie_et_termine_par_des_points_virgules() {
+    fn schema_sorted_with_semicolons() {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(
             "CREATE TABLE b (id INTEGER PRIMARY KEY, a_id INTEGER);

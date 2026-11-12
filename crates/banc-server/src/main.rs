@@ -23,8 +23,8 @@ fn main() -> ExitCode {
         Err(error) => {
             // The logs are not necessarily open: the error also goes to
             // standard error, which the service manager reads.
-            tracing::error!("arrêt sur erreur : {error:#}");
-            let _ = writeln!(std::io::stderr(), "{NAME} : {error:#}");
+            tracing::error!("stopped on error: {error:#}");
+            let _ = writeln!(std::io::stderr(), "{NAME}: {error:#}");
             ExitCode::FAILURE
         }
     }
@@ -53,19 +53,19 @@ fn run() -> anyhow::Result<()> {
 
     let database = config.database_path();
     let conn = db::open(&database)
-        .with_context(|| format!("ouverture de la base {}", database.display()))?;
-    tracing::info!(version = VERSION, base = %database.display(), "serveur démarré");
+        .with_context(|| format!("opening the database {}", database.display()))?;
+    tracing::info!(version = VERSION, database = %database.display(), "server started");
 
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
-        .context("démarrage du runtime")?;
+        .context("starting the runtime")?;
     runtime
         .block_on(banc_platform::signal::shutdown())
-        .context("attente du signal d'arrêt")?;
+        .context("waiting for the shutdown signal")?;
 
     drop(conn);
-    tracing::info!("serveur arrêté");
+    tracing::info!("server stopped");
     Ok(())
 }
 

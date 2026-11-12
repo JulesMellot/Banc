@@ -19,7 +19,7 @@ use clap::{Parser, Subcommand};
 use crate::cmd::{root, run, say};
 
 #[derive(Parser)]
-#[command(name = "cargo xtask", about = "Commandes de développement de Banc")]
+#[command(name = "cargo xtask", about = "Banc development commands")]
 struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -27,37 +27,37 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Lance les contrôles de la CI (tous, ou seulement les étapes citées)
+    /// Runs the CI checks (all of them, or only the steps listed)
     Check {
-        /// Étapes à lancer, dans l'ordre donné
+        /// Steps to run, in the given order
         steps: Vec<check::Step>,
-        /// Référence git de départ pour les étapes `commits` et `secrets`
+        /// Starting git reference for the `commits` and `secrets` steps
         #[arg(long, default_value = "origin/main")]
         base: String,
     },
-    /// Contrôle un message de commit dans un fichier (crochet commit-msg)
+    /// Checks a commit message in a file (commit-msg hook)
     CommitMsg { file: PathBuf },
-    /// Contrôle le titre d'une PR
+    /// Checks a PR title
     PrTitle { title: String },
-    /// Réécrit migrations/schema.sql à partir des migrations
+    /// Rewrites migrations/schema.sql from the migrations
     Schema,
-    /// Active les crochets git du dépôt (.githooks)
+    /// Enables the repository's git hooks (.githooks)
     Hooks,
-    /// Lance le serveur avec dev/serveur.toml
+    /// Runs the server with dev/server.toml
     DevServer,
-    /// Lance l'agent au premier plan, journaux dans .dev/
+    /// Runs the agent in the foreground, logs in .dev/
     DevAgent,
-    /// Lance le frontend en mode développement
+    /// Runs the frontend in development mode
     DevUi,
-    /// Compile les binaires en mode release dans dist/<cible>/
+    /// Builds the release binaries into dist/<target>/
     Dist {
-        /// Cible Rust (répétable). Par défaut : la machine courante
+        /// Rust target (repeatable). Default: the current machine
         #[arg(long = "target")]
         targets: Vec<String>,
     },
-    /// Mesure la mémoire et le CPU de l'agent au repos (Linux)
+    /// Measures the agent's memory and CPU at rest (Linux)
     IdleBench {
-        /// Durée de la mesure
+        /// Measurement duration
         #[arg(long, default_value_t = 10)]
         seconds: u64,
     },
@@ -67,7 +67,7 @@ fn main() -> ExitCode {
     match execute() {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            say(&format!("erreur : {error:#}"));
+            say(&format!("error: {error:#}"));
             ExitCode::FAILURE
         }
     }
@@ -80,33 +80,33 @@ fn execute() -> anyhow::Result<()> {
         Command::Check { steps, base } => check::run_steps(&root, &steps, &base),
         Command::CommitMsg { file } => {
             let message = std::fs::read_to_string(&file)
-                .with_context(|| format!("lecture de {}", file.display()))?;
-            report("message de commit", commits::check_message(&message))
+                .with_context(|| format!("reading {}", file.display()))?;
+            report("commit message", commits::check_message(&message))
         }
-        Command::PrTitle { title } => report("titre de PR", commits::check_subject(&title)),
+        Command::PrTitle { title } => report("PR title", commits::check_subject(&title)),
         Command::Schema => {
             let mut command = cmd::cargo(&["test", "-p", "banc-server", "--test", "migrations"]);
             command.env("BANC_WRITE_SCHEMA", "1");
             run(command.current_dir(&root))?;
-            say("migrations/schema.sql réécrit, relis le diff");
+            say("migrations/schema.sql rewritten, review the diff");
             Ok(())
         }
         Command::Hooks => {
             let mut command = cmd::tool("git");
             command.args(["config", "core.hooksPath", ".githooks"]);
             run(command.current_dir(&root))?;
-            say("crochets git activés (.githooks)");
+            say("git hooks enabled (.githooks)");
             Ok(())
         }
         Command::DevServer => {
             let args = ["run", "-p", "banc-server", "--"];
             let mut command = cmd::cargo(&args);
-            command.args(["--config", "dev/serveur.toml", "--stderr"]);
+            command.args(["--config", "dev/server.toml", "--stderr"]);
             run(command.current_dir(&root))
         }
         Command::DevAgent => {
             let mut command = cmd::cargo(&["run", "-p", "banc-agent", "--"]);
-            command.args(["--log-dir", ".dev/journaux", "--stderr"]);
+            command.args(["--log-dir", ".dev/logs", "--stderr"]);
             run(command.current_dir(&root))
         }
         Command::DevUi => {
@@ -130,5 +130,5 @@ fn report(what: &str, errors: Vec<String>) -> anyhow::Result<()> {
         say(&format!("  - {error}"));
     }
     say(commits::HELP);
-    anyhow::bail!("{what} refusé")
+    anyhow::bail!("{what} refused")
 }

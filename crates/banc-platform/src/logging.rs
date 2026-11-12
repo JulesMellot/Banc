@@ -45,25 +45,25 @@ impl LogConfig {
 
 #[derive(Debug, thiserror::Error)]
 pub enum LogError {
-    #[error("impossible de créer le dossier des journaux {dir}")]
+    #[error("cannot create the log folder {dir}")]
     CreateDir {
         dir: PathBuf,
         #[source]
         source: std::io::Error,
     },
-    #[error("impossible d'ouvrir le journal dans {dir}")]
+    #[error("cannot open the log in {dir}")]
     Open {
         dir: PathBuf,
         #[source]
         source: tracing_appender::rolling::InitError,
     },
-    #[error("les journaux sont déjà initialisés dans ce processus")]
+    #[error("logs are already initialized in this process")]
     AlreadyInitialized,
 }
 
 /// Keep alive until the process ends: dropping it flushes the write buffer
 /// to disk.
-#[must_use = "les dernières lignes sont perdues si le garde est détruit trop tôt"]
+#[must_use = "the last lines are lost if the guard is dropped too early"]
 #[derive(Debug)]
 pub struct LogGuard {
     _worker: WorkerGuard,
@@ -133,15 +133,15 @@ mod tests {
     }
 
     #[test]
-    fn ecrit_dans_un_fichier_date_et_filtre_par_niveau() {
+    fn writes_to_a_dated_file_filtered_by_level() {
         let tmp = tempfile::tempdir().unwrap();
-        let dir = tmp.path().join("journaux");
+        let dir = tmp.path().join("logs");
         let config = LogConfig::new(&dir, "banc-test");
 
         let (subscriber, guard) = build(&config).unwrap();
         tracing::subscriber::with_default(subscriber, || {
-            tracing::info!(poste = "mac-01", "ligne gardée");
-            tracing::debug!("ligne ignorée");
+            tracing::info!(station = "mac-01", "kept line");
+            tracing::debug!("ignored line");
         });
         drop(guard);
 
@@ -149,38 +149,38 @@ mod tests {
         assert_eq!(names.len(), 1, "{names:?}");
         assert!(names[0].starts_with("banc-test."), "{names:?}");
         assert!(names[0].ends_with(".log"), "{names:?}");
-        assert!(content.contains("ligne gardée"), "{content}");
+        assert!(content.contains("kept line"), "{content}");
         assert!(content.contains("mac-01"), "{content}");
-        assert!(!content.contains("ligne ignorée"), "{content}");
+        assert!(!content.contains("ignored line"), "{content}");
     }
 
     #[test]
-    fn supprime_les_fichiers_les_plus_anciens() {
+    fn deletes_the_oldest_files() {
         let tmp = tempfile::tempdir().unwrap();
         for day in ["2020-01-01", "2020-01-02", "2020-01-03"] {
-            std::fs::write(tmp.path().join(format!("banc-test.{day}.log")), "ancien\n").unwrap();
+            std::fs::write(tmp.path().join(format!("banc-test.{day}.log")), "old\n").unwrap();
         }
         let mut config = LogConfig::new(tmp.path(), "banc-test");
         config.keep_files = 2;
 
         let (subscriber, guard) = build(&config).unwrap();
-        tracing::subscriber::with_default(subscriber, || tracing::info!("nouveau"));
+        tracing::subscriber::with_default(subscriber, || tracing::info!("new"));
         drop(guard);
 
         // Rotation sorts by file creation date: check the number kept and
         // the presence of today's file, not which old one was retained.
         let (names, content) = read_logs(tmp.path());
         assert_eq!(names.len(), 2, "{names:?}");
-        assert!(content.contains("nouveau"), "{content}");
+        assert!(content.contains("new"), "{content}");
     }
 
     #[test]
-    fn dossier_impossible_a_creer() {
+    fn folder_cannot_be_created() {
         let tmp = tempfile::tempdir().unwrap();
-        let file = tmp.path().join("fichier");
+        let file = tmp.path().join("file");
         std::fs::write(&file, "").unwrap();
 
-        let result = build(&LogConfig::new(file.join("journaux"), "banc-test"));
+        let result = build(&LogConfig::new(file.join("logs"), "banc-test"));
         assert!(matches!(result, Err(LogError::CreateDir { .. })));
     }
 }

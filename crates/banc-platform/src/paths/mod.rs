@@ -29,7 +29,7 @@ pub enum Scope {
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum PathError {
-    #[error("variable d'environnement {0} absente ou vide")]
+    #[error("environment variable {0} missing or empty")]
     MissingEnv(&'static str),
 }
 

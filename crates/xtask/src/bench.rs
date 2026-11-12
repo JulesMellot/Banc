@@ -39,32 +39,30 @@ impl Drop for KillOnDrop {
 
 pub fn idle_bench(root: &Path, seconds: u64) -> anyhow::Result<()> {
     if seconds == 0 {
-        bail!("la durée de mesure doit valoir au moins 1 seconde");
+        bail!("the measurement duration must be at least 1 second");
     }
     if !Path::new("/proc/self/stat").exists() {
-        bail!("idle-bench lit /proc : la mesure ne tourne que sous Linux pour l'instant");
+        bail!("idle-bench reads /proc: the measurement only runs on Linux for now");
     }
     run(cargo(&["build", "--release", "--locked", "-p", "banc-agent"]).current_dir(root))?;
     let ticks_per_second: u64 = output(tool("getconf").arg("CLK_TCK"))?
         .trim()
         .parse()
-        .context("valeur de CLK_TCK")?;
+        .context("CLK_TCK value")?;
 
-    let logs = root.join("target/idle-bench/journaux");
+    let logs = root.join("target/idle-bench/logs");
     let agent = Command::new(root.join("target/release/banc-agent"))
         .arg("--log-dir")
         .arg(&logs)
         .stdin(Stdio::null())
         .spawn()
-        .context("lancement de banc-agent")?;
+        .context("starting banc-agent")?;
     let agent = KillOnDrop(agent);
     let pid = agent.0.id();
 
     std::thread::sleep(WARM_UP);
     let before = measure(pid)?;
-    say(&format!(
-        "mesure de banc-agent au repos pendant {seconds} s..."
-    ));
+    say(&format!("measuring banc-agent at rest for {seconds} s..."));
     std::thread::sleep(Duration::from_secs(seconds));
     let after = measure(pid)?;
     drop(agent);
@@ -73,21 +71,21 @@ pub fn idle_bench(root: &Path, seconds: u64) -> anyhow::Result<()> {
     let allowed_ticks = allowed_ticks(seconds, ticks_per_second);
     let cpu_percent = cpu_ticks as f64 * 100.0 / (seconds * ticks_per_second) as f64;
     say(&format!(
-        "mémoire résidente : {:.1} Mo (cible : moins de {} Mo)",
+        "resident memory: {:.1} MB (target: under {} MB)",
         after.rss_kb as f64 / 1024.0,
         MAX_RSS_KB / 1024
     ));
     say(&format!(
-        "CPU : {cpu_percent:.2} % ({cpu_ticks} tic(s) en {seconds} s, {allowed_ticks} admis)"
+        "CPU: {cpu_percent:.2}% ({cpu_ticks} tick(s) in {seconds} s, {allowed_ticks} allowed)"
     ));
 
     if after.rss_kb >= MAX_RSS_KB {
-        bail!("l'agent dépasse la cible de mémoire au repos");
+        bail!("the agent exceeds the memory target at rest");
     }
     if cpu_ticks > allowed_ticks {
-        bail!("l'agent consomme du CPU au repos");
+        bail!("the agent uses CPU at rest");
     }
-    say("cibles au repos tenues");
+    say("targets at rest met");
     Ok(())
 }
 
@@ -99,12 +97,11 @@ fn allowed_ticks(seconds: u64, ticks_per_second: u64) -> u64 {
 fn measure(pid: u32) -> anyhow::Result<Measure> {
     let read = |file: &str| {
         let path = format!("/proc/{pid}/{file}");
-        std::fs::read_to_string(&path)
-            .with_context(|| format!("lecture de {path} (agent arrêté ?)"))
+        std::fs::read_to_string(&path).with_context(|| format!("reading {path} (agent stopped?)"))
     };
     Ok(Measure {
-        rss_kb: parse_rss_kb(&read("status")?).context("VmRSS absent de /proc/<pid>/status")?,
-        cpu_ticks: parse_cpu_ticks(&read("stat")?).context("format de /proc/<pid>/stat")?,
+        rss_kb: parse_rss_kb(&read("status")?).context("VmRSS missing from /proc/<pid>/status")?,
+        cpu_ticks: parse_cpu_ticks(&read("stat")?).context("format of /proc/<pid>/stat")?,
     })
 }
 
@@ -133,14 +130,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn memoire_residente() {
+    fn resident_memory() {
         let status = "Name:\tbanc-agent\nVmPeak:\t   12000 kB\nVmRSS:\t    2816 kB\nThreads:\t2\n";
         assert_eq!(parse_rss_kb(status), Some(2816));
         assert_eq!(parse_rss_kb("Name:\tbanc-agent\n"), None);
     }
 
     #[test]
-    fn temps_cpu() {
+    fn cpu_time() {
         let stat = "4242 (banc agent (x)) S 1 4242 4242 0 -1 4194304 150 0 0 0 7 3 0 0 20 0 2 0 123456 1000000 700\n";
         assert_eq!(parse_cpu_ticks(stat), Some(10));
         assert_eq!(parse_cpu_ticks("4242 (banc-agent) S 1 2"), None);
@@ -148,7 +145,7 @@ mod tests {
     }
 
     #[test]
-    fn tics_admis() {
+    fn ticks_allowed() {
         assert_eq!(allowed_ticks(10, 100), 1);
         assert_eq!(allowed_ticks(60, 100), 6);
         assert_eq!(allowed_ticks(5, 100), 0);

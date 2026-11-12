@@ -27,7 +27,7 @@ impl fmt::Display for Violation {
 pub fn scan(root: &Path) -> anyhow::Result<Vec<Violation>> {
     let crates = root.join("crates");
     let mut files = Vec::new();
-    for entry in std::fs::read_dir(&crates).context("lecture de crates/")? {
+    for entry in std::fs::read_dir(&crates).context("reading crates/")? {
         let path = entry?.path();
         let name = path
             .file_name()
@@ -43,7 +43,7 @@ pub fn scan(root: &Path) -> anyhow::Result<Vec<Violation>> {
     for file in files {
         let is_manifest = file.file_name().is_some_and(|name| name == "Cargo.toml");
         let text = std::fs::read_to_string(&file)
-            .with_context(|| format!("lecture de {}", file.display()))?;
+            .with_context(|| format!("reading {}", file.display()))?;
         for (index, line) in text.lines().enumerate() {
             let refused = if is_manifest {
                 manifest_line_is_os_specific(line)
@@ -64,7 +64,7 @@ pub fn scan(root: &Path) -> anyhow::Result<Vec<Violation>> {
 
 /// Adds the folder's `.rs` and `Cargo.toml` files, skipping `target/`.
 fn collect(dir: &Path, files: &mut Vec<PathBuf>) -> anyhow::Result<()> {
-    for entry in std::fs::read_dir(dir).with_context(|| format!("lecture de {}", dir.display()))? {
+    for entry in std::fs::read_dir(dir).with_context(|| format!("reading {}", dir.display()))? {
         let path = entry?.path();
         let name = path
             .file_name()
@@ -125,7 +125,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn lignes_rust_refusees() {
+    fn refused_rust_lines() {
         for line in [
             "#[cfg(target_os = \"macos\")]",
             "    #[cfg(any(target_os = \"linux\", target_os = \"macos\"))]",
@@ -143,11 +143,11 @@ mod tests {
     }
 
     #[test]
-    fn lignes_rust_acceptees() {
+    fn accepted_rust_lines() {
         for line in [
             "#[cfg(test)]",
-            "#[cfg(feature = \"faux\")]",
-            "// #[cfg(windows)] se trouve dans banc-platform",
+            "#[cfg(feature = \"fake\")]",
+            "// #[cfg(windows)] lives in banc-platform",
             "let windows = config.windows_drive;",
             "let config = load(\"unix.toml\");",
             "#[cfg(debug_assertions)] let unixtime = now();",
@@ -158,7 +158,7 @@ mod tests {
     }
 
     #[test]
-    fn lignes_de_manifeste() {
+    fn manifest_lines() {
         assert!(manifest_line_is_os_specific(
             "[target.'cfg(windows)'.dependencies]"
         ));
@@ -170,7 +170,7 @@ mod tests {
     }
 
     #[test]
-    fn parcours_des_crates_sauf_platform() {
+    fn walks_crates_except_platform() {
         let tmp = tempfile::tempdir().unwrap();
         let write = |path: &str, text: &str| {
             let path = tmp.path().join(path);

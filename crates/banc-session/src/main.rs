@@ -20,8 +20,8 @@ fn main() -> ExitCode {
         Err(error) => {
             // The logs are not necessarily open: the error also goes to
             // standard error, which the service manager reads.
-            tracing::error!("arrêt sur erreur : {error:#}");
-            let _ = writeln!(std::io::stderr(), "{NAME} : {error:#}");
+            tracing::error!("stopped on error: {error:#}");
+            let _ = writeln!(std::io::stderr(), "{NAME}: {error:#}");
             ExitCode::FAILURE
         }
     }
@@ -45,8 +45,8 @@ fn run() -> anyhow::Result<()> {
     log.stderr = options.stderr;
     let _log_guard = logging::init(&log)?;
 
-    tracing::info!(version = VERSION, "assistant de session démarré");
-    tracing::info!("rien à faire avant la phase 1, arrêt");
+    tracing::info!(version = VERSION, "session helper started");
+    tracing::info!("nothing to do before phase 1, exiting");
     Ok(())
 }
 

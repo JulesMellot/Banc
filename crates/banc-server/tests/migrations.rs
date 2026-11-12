@@ -15,14 +15,14 @@ fn schema_path() -> PathBuf {
 }
 
 #[test]
-fn les_migrations_sont_valides() {
+fn migrations_are_valid() {
     if let Some(migrations) = db::migrations().unwrap() {
         migrations.validate().unwrap();
     }
 }
 
 #[test]
-fn le_schema_correspond_au_fichier_de_reference() {
+fn schema_matches_the_reference_file() {
     let conn = db::open_in_memory().unwrap();
     let actual = db::schema(&conn).unwrap();
     let path = schema_path();
@@ -35,8 +35,8 @@ fn le_schema_correspond_au_fichier_de_reference() {
     let expected = std::fs::read_to_string(&path).unwrap_or_default();
     assert!(
         actual == expected,
-        "migrations/schema.sql ne correspond plus aux migrations.\n\
-         Lance `cargo xtask schema` et relis le diff.\n\n\
-         --- obtenu ---\n{actual}\n--- attendu ---\n{expected}"
+        "migrations/schema.sql no longer matches the migrations.\n\
+         Run `cargo xtask schema` and review the diff.\n\n\
+         --- actual ---\n{actual}\n--- expected ---\n{expected}"
     );
 }

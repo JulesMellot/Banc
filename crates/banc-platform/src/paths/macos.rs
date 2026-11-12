@@ -15,20 +15,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn journaux_du_service() {
+    fn service_logs() {
         let dir = log_dir(Scope::System, &fake_env(&[])).unwrap();
         assert_eq!(dir, PathBuf::from("/Library/Logs/Banc"));
     }
 
     #[test]
-    fn journaux_de_session() {
+    fn session_logs() {
         let env = fake_env(&[("HOME", "/Users/lea")]);
         let dir = log_dir(Scope::User, &env).unwrap();
         assert_eq!(dir, PathBuf::from("/Users/lea/Library/Logs/Banc"));
     }
 
     #[test]
-    fn journaux_de_session_sans_home() {
+    fn session_logs_without_home() {
         let err = log_dir(Scope::User, &fake_env(&[])).unwrap_err();
         assert_eq!(err, PathError::MissingEnv("HOME"));
     }

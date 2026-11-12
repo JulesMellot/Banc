@@ -16,21 +16,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn journaux_du_service() {
+    fn service_logs() {
         let env = fake_env(&[("PROGRAMDATA", r"C:\ProgramData")]);
         let dir = log_dir(Scope::System, &env).unwrap();
         assert_eq!(dir, PathBuf::from(r"C:\ProgramData\Banc\logs"));
     }
 
     #[test]
-    fn journaux_de_session() {
+    fn session_logs() {
         let env = fake_env(&[("LOCALAPPDATA", r"C:\Users\lea\AppData\Local")]);
         let dir = log_dir(Scope::User, &env).unwrap();
         assert_eq!(dir, PathBuf::from(r"C:\Users\lea\AppData\Local\Banc\logs"));
     }
 
     #[test]
-    fn journaux_sans_variable() {
+    fn logs_without_variable() {
         let err = log_dir(Scope::User, &fake_env(&[])).unwrap_err();
         assert_eq!(err, PathError::MissingEnv("LOCALAPPDATA"));
     }

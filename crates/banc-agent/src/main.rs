@@ -21,8 +21,8 @@ fn main() -> ExitCode {
         Err(error) => {
             // The logs are not necessarily open: the error also goes to
             // standard error, which the service manager reads.
-            tracing::error!("arrêt sur erreur : {error:#}");
-            let _ = writeln!(std::io::stderr(), "{NAME} : {error:#}");
+            tracing::error!("stopped on error: {error:#}");
+            let _ = writeln!(std::io::stderr(), "{NAME}: {error:#}");
             ExitCode::FAILURE
         }
     }
@@ -50,13 +50,13 @@ fn run() -> anyhow::Result<()> {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
-        .context("démarrage du runtime")?;
+        .context("starting the runtime")?;
 
-    tracing::info!(version = VERSION, "agent démarré");
+    tracing::info!(version = VERSION, "agent started");
     runtime
         .block_on(banc_platform::signal::shutdown())
-        .context("attente du signal d'arrêt")?;
-    tracing::info!("agent arrêté");
+        .context("waiting for the shutdown signal")?;
+    tracing::info!("agent stopped");
     Ok(())
 }
 

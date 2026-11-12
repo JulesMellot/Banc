@@ -7,7 +7,7 @@ version = "0.0.0"
 edition = "2021"
 rust-version = "1.97"
 publish = false
-license = "LicenseRef-Proprietaire"
+license = "LicenseRef-Proprietary"
 repository = "https://github.com/JulesMellot/Banc"
 
 [workspace.dependencies]

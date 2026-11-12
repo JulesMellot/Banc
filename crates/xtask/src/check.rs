@@ -13,23 +13,23 @@ use crate::{architecture, commits};
 pub enum Step {
     /// cargo fmt --check
     Fmt,
-    /// Aucun code spécifique à un OS hors de banc-platform
+    /// No OS-specific code outside banc-platform
     Architecture,
-    /// cargo clippy, avertissements refusés
+    /// cargo clippy, warnings refused
     Clippy,
-    /// cargo nextest et tests de documentation
+    /// cargo nextest and doc tests
     Tests,
-    /// Migrations appliquées sur une base vide, schéma comparé à schema.sql
+    /// Migrations applied to an empty database, schema compared with schema.sql
     Migrations,
-    /// Frontend : lint, svelte-check, vitest, build
+    /// Frontend: lint, svelte-check, vitest, build
     Frontend,
-    /// Scripts Python du pont Resolve : ruff et compilation
+    /// Python scripts for the Resolve bridge: ruff and compilation
     Python,
-    /// cargo deny : failles, licences, doublons, sources
+    /// cargo deny: vulnerabilities, licenses, duplicates, sources
     Deny,
-    /// gitleaks sur les commits de la branche et les changements en cours
+    /// gitleaks on the branch's commits and on uncommitted changes
     Secrets,
-    /// Convention des messages de commit de la branche
+    /// Commit message convention for the branch
     Commits,
 }
 
@@ -46,10 +46,10 @@ pub fn run_steps(root: &Path, steps: &[Step], base: &str) -> anyhow::Result<()> 
             .unwrap_or_default();
         say(&format!("\n=== {name} ==="));
         let start = Instant::now();
-        run_step(root, *step, base).with_context(|| format!("étape `{name}`"))?;
-        say(&format!("=== {name} : ok ({:.0?}) ===", start.elapsed()));
+        run_step(root, *step, base).with_context(|| format!("step `{name}`"))?;
+        say(&format!("=== {name}: ok ({:.0?}) ===", start.elapsed()));
     }
-    say("\nTous les contrôles demandés passent.");
+    say("\nAll requested checks pass.");
     Ok(())
 }
 
@@ -63,7 +63,7 @@ fn run_step(root: &Path, step: Step, base: &str) -> anyhow::Result<()> {
             }
             if !violations.is_empty() {
                 bail!(
-                    "code spécifique à un OS hors de banc-platform ({} ligne(s))",
+                    "OS-specific code outside banc-platform ({} line(s))",
                     violations.len()
                 );
             }
@@ -139,7 +139,7 @@ fn python(root: &Path) -> anyhow::Result<()> {
     // Compile without running and without writing __pycache__.
     let python = if cfg!(windows) { "python" } else { "python3" };
     let mut scripts = Vec::new();
-    for entry in std::fs::read_dir(root.join(PYTHON_DIR)).context("lecture de resolve-scripts")? {
+    for entry in std::fs::read_dir(root.join(PYTHON_DIR)).context("reading resolve-scripts")? {
         let path = entry?.path();
         if path.extension().is_some_and(|ext| ext == "py") {
             scripts.push(path);
@@ -169,7 +169,7 @@ fn base_ref(root: &Path, base: &str) -> anyhow::Result<String> {
             return Ok(candidate.to_owned());
         }
     }
-    bail!("référence git `{base}` introuvable (lance `git fetch origin main`)")
+    bail!("git reference `{base}` not found (run `git fetch origin main`)")
 }
 
 fn commit_messages(root: &Path, base: &str) -> anyhow::Result<()> {
@@ -204,10 +204,10 @@ fn commit_messages(root: &Path, base: &str) -> anyhow::Result<()> {
             }
         }
     }
-    say(&format!("{checked} commit(s) contrôlé(s) sur {range}"));
+    say(&format!("{checked} commit(s) checked in {range}"));
     if refused > 0 {
         say(commits::HELP);
-        bail!("{refused} message(s) de commit refusé(s)");
+        bail!("{refused} commit message(s) refused");
     }
     Ok(())
 }

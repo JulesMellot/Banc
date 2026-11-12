@@ -3,8 +3,8 @@
 </script>
 
 <main>
-  <h1>{t('app.nom')}</h1>
-  <p>{t('app.accroche')}</p>
+  <h1>{t('app.name')}</h1>
+  <p>{t('app.tagline')}</p>
 </main>
 
 <style>
