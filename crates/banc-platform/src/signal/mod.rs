@@ -1,4 +1,4 @@
-//! Demande d'arrêt du processus.
+//! Process shutdown request.
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 mod unix;
@@ -10,11 +10,11 @@ mod windows;
 #[cfg(target_os = "windows")]
 use windows as os;
 
-/// Attend que l'OS demande l'arrêt : SIGTERM ou SIGINT sous Linux et macOS,
-/// Ctrl+C sous Windows. L'arrêt demandé par le gestionnaire de services
-/// Windows arrive avec le service système, en phase 1.
+/// Waits for the OS to request shutdown: SIGTERM or SIGINT on Linux and
+/// macOS, Ctrl+C on Windows. Shutdown requested by the Windows service
+/// manager arrives with the system service, in phase 1.
 ///
-/// Ne consomme aucun CPU pendant l'attente.
+/// Uses no CPU while waiting.
 pub async fn shutdown() -> std::io::Result<()> {
     os::shutdown().await
 }

@@ -1,6 +1,6 @@
-//! Convention des messages de commit et des titres de PR.
+//! Convention for commit messages and PR titles.
 //!
-//! Référence : section 15 de `docs/PLAN.md`.
+//! Reference: section 15 of `docs/PLAN.md`.
 
 pub const TYPES: &[&str] = &[
     "feat", "fix", "refactor", "perf", "test", "docs", "build", "ci", "chore",
@@ -22,8 +22,8 @@ pub const SCOPES: &[&str] = &[
     "docs",
 ];
 
-/// Types qui touchent souvent tout le dépôt : la portée y est facultative
-/// (`ci: ajouter la mesure au repos sur les PR`).
+/// Types that often touch the whole repository: the scope is optional for
+/// them (`ci: ajouter la mesure au repos sur les PR`).
 const SCOPE_OPTIONAL: &[&str] = &["docs", "build", "ci", "chore"];
 
 const MAX_SUBJECT: usize = 72;
@@ -42,19 +42,19 @@ Portées : server, agent, session, blobs, tunnel, resolve, platform, proto,
 ui, scripts, packaging, ci, docs (facultative pour docs, build, ci, chore).
 Détail : section 15 de docs/PLAN.md.";
 
-/// Les mises à jour de dépendances automatiques gardent leur propre format.
+/// Automatic dependency updates keep their own format.
 pub fn is_exempt_author(author: &str) -> bool {
     author == "dependabot[bot]"
 }
 
-/// Contrôle la première ligne d'un commit, ou le titre d'une PR.
+/// Checks the first line of a commit, or a PR title.
 pub fn check_subject(subject: &str) -> Vec<String> {
     parse_subject(subject).err().unwrap_or_default()
 }
 
-/// Contrôle un message de commit complet.
+/// Checks a full commit message.
 pub fn check_message(message: &str) -> Vec<String> {
-    // Les lignes de commentaire de git ne font pas partie du message.
+    // Git comment lines are not part of the message.
     let lines: Vec<&str> = message
         .lines()
         .take_while(|line| !line.starts_with("# ------------------------ >8"))
@@ -173,9 +173,9 @@ fn check_description(description: &str) -> Vec<String> {
     errors
 }
 
-/// Vrai si le premier mot, passé une négation ou un pronom, a une terminaison
-/// d'infinitif français. C'est une approximation : elle écarte `update`,
-/// `corrections` ou `ajout de`, pas tous les mots qui ne sont pas des verbes.
+/// True if the first word, after a negation or a pronoun, has a French
+/// infinitive ending. This is an approximation: it rules out `update`,
+/// `corrections` or `ajout de`, not every word that is not a verb.
 fn starts_with_infinitive(description: &str) -> bool {
     const SKIPPED: &[&str] = &["ne", "pas", "plus", "jamais", "rien", "se"];
     const ENDINGS: &[&str] = &["er", "ir", "ïr", "re"];

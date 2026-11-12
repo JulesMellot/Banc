@@ -1,6 +1,6 @@
 [package]
 name = "banc-agent"
-description = "Service système de Banc : installations, transferts, tunnel."
+description = "Banc system service: installs, transfers, tunnel."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

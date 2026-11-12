@@ -1,32 +1,32 @@
-# Réponses des prototypes
+# Prototype answers
 
-Les prototypes sont décrits dans la section 12 de `docs/PLAN.md`. Chaque réponse se note ici, avec la date, la version de Resolve et l'OS du test.
+The prototypes are described in section 12 of `docs/PLAN.md`. Each answer is recorded here, with the date, the Resolve version and the OS of the test.
 
-Règle de `CLAUDE.md` : on ne code pas une fonction qui dépend d'un comportement de Resolve tant que son prototype n'a pas de réponse ci-dessous. Si une réponse contredit une hypothèse du plan, on corrige le plan dans le même commit.
+Rule from `CLAUDE.md`: no function that depends on a Resolve behavior is coded until its prototype has an answer below. If an answer contradicts an assumption of the plan, the plan is corrected in the same commit.
 
-| Prototype | Question | État |
+| Prototype | Question | Status |
 |---|---|---|
-| P1 | Chemins, Mapped Mount, préférences Media Storage | sans réponse |
-| P2 | Proxys sans originaux | sans réponse |
-| P3 | Bibliothèque partagée, clé `.resolvedbkey`, `SetCurrentDatabase` | sans réponse |
-| P4 | Collaboration à distance, latence acceptable | sans réponse |
-| P5 | Consolidation, `ReplaceClip`, chutier verrouillé, 10 000 clips | sans réponse |
-| P6 | Génération des proxys, formats par OS | sans réponse |
-| P7 | Suivi de la file de rendu, `-nogui` | sans réponse |
-| P8 | Remplacer un fichier ouvert par Resolve sous Windows | sans réponse |
-| P9 | Installation silencieuse des plugins de l'équipe | sans réponse |
-| P10 | Stabilité d'`iroh-blobs`, version de Python, « External scripting » | sans réponse |
+| P1 | Paths, Mapped Mount, Media Storage preferences | unanswered |
+| P2 | Proxies without originals | unanswered |
+| P3 | Shared library, `.resolvedbkey` key, `SetCurrentDatabase` | unanswered |
+| P4 | Remote collaboration, acceptable latency | unanswered |
+| P5 | Consolidation, `ReplaceClip`, locked bin, 10,000 clips | unanswered |
+| P6 | Proxy generation, formats per OS | unanswered |
+| P7 | Render queue tracking, `-nogui` | unanswered |
+| P8 | Replacing a file held open by Resolve on Windows | unanswered |
+| P9 | Silent installation of the team's plugins | unanswered |
+| P10 | Stability of `iroh-blobs`, Python version, "External scripting" | unanswered |
 
-## Modèle de réponse
+## Answer template
 
 ```
-## P1. Chemins
+## P1. Paths
 
-Date : 2026-11-20
-Testé avec : Resolve Studio 21.1, macOS 26.1 et Windows 11
+Date: 2026-11-20
+Tested with: Resolve Studio 21.1, macOS 26.1 and Windows 11
 
-Question : ...
-Réponse : ...
-Ce que ça change dans le plan : ...
-Scripts et captures : docs/prototypes/p1/
+Question: ...
+Answer: ...
+What it changes in the plan: ...
+Scripts and screenshots: docs/prototypes/p1/
 ```

@@ -1,8 +1,8 @@
-//! Contrôle des migrations : elles s'appliquent sur une base vide et donnent
-//! exactement le schéma gardé dans `migrations/schema.sql`.
+//! Migration check: they apply to an empty database and give exactly the
+//! schema kept in `migrations/schema.sql`.
 //!
-//! Lancé par `cargo xtask check migrations`. `cargo xtask schema` réécrit le
-//! fichier de référence après l'ajout d'une migration.
+//! Run by `cargo xtask check migrations`. `cargo xtask schema` rewrites the
+//! reference file after a migration is added.
 
 use std::path::PathBuf;
 

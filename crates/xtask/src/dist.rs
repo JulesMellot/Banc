@@ -1,6 +1,6 @@
-//! `cargo xtask dist` : binaires en mode release, rangés par cible.
+//! `cargo xtask dist`: release binaries, sorted by target.
 //!
-//! Les installeurs s'ajoutent ici en phase 7.
+//! Installers are added here in phase 7.
 
 use std::path::Path;
 
@@ -20,7 +20,7 @@ pub fn dist(root: &Path, targets: &[String]) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// La cible de la machine courante, lue dans `rustc -vV`.
+/// The current machine's target, read from `rustc -vV`.
 fn host_target() -> anyhow::Result<String> {
     let version = output(tool("rustc").arg("-vV"))?;
     parse_host(&version)

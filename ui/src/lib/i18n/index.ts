@@ -1,10 +1,10 @@
-// Tous les textes visibles de l'interface sont dans `fr.json`.
-// Un composant ne contient jamais de texte en dur : il appelle `t('cle')`.
+// All visible interface text is in `fr.json`.
+// A component never contains hard-coded text: it calls `t('cle')`.
 import fr from './fr.json';
 
 export type CleMessage = keyof typeof fr;
 
-/** Remplace chaque `{nom}` du modèle par la valeur correspondante. */
+/** Replaces each `{nom}` in the template with the matching value. */
 export function formater(modele: string, valeurs: Record<string, string | number> = {}): string {
   return modele.replace(/\{(\w+)\}/g, (marque, nom: string) => {
     const valeur = valeurs[nom];
@@ -12,7 +12,7 @@ export function formater(modele: string, valeurs: Record<string, string | number
   });
 }
 
-/** Texte français de la clé, avec ses valeurs. */
+/** French text for the key, with its values. */
 export function t(cle: CleMessage, valeurs?: Record<string, string | number>): string {
   return formater(fr[cle], valeurs);
 }

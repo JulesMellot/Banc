@@ -1,3 +1,3 @@
-//! Tunnel TCP sur flux iroh, pour joindre le PostgreSQL de la collaboration.
+//! TCP tunnel over iroh streams, to reach the collaboration PostgreSQL.
 //!
-//! Vide jusqu'à la phase 5.
+//! Empty until phase 5.

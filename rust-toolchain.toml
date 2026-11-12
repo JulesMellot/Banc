@@ -1,5 +1,5 @@
-# Version figée pour que clippy ne change pas d'avis entre deux exécutions.
-# Dependabot propose la montée de version.
+# Pinned version, so that clippy does not change its mind between two runs.
+# Dependabot proposes version bumps.
 [toolchain]
 channel = "1.99.1"
 components = ["rustfmt", "clippy"]

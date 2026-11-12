@@ -1,5 +1,5 @@
-# Configuration de développement, utilisée par `cargo xtask dev-server`.
-# Tout s'écrit dans .dev/, ignoré par git.
+# Development configuration, used by `cargo xtask dev-server`.
+# Everything is written to .dev/, ignored by git.
 data_dir = "../.dev/serveur"
 
 [logs]

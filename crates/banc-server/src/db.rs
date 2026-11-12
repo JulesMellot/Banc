@@ -1,8 +1,8 @@
-//! Base SQLite du serveur et ses migrations.
+//! The server's SQLite database and its migrations.
 //!
-//! Les migrations sont les fichiers `migrations/NNNN_nom.sql` du dépôt,
-//! embarqués à la compilation et appliqués dans l'ordre à l'ouverture.
-//! `migrations/schema.sql` garde le schéma obtenu, contrôlé par
+//! The migrations are the repository's `migrations/NNNN_name.sql` files,
+//! embedded at compile time and applied in order on opening.
+//! `migrations/schema.sql` keeps the resulting schema, checked by
 //! `cargo xtask check migrations`.
 
 use std::path::{Path, PathBuf};
@@ -13,12 +13,12 @@ use rusqlite_migration::{Migrations, M};
 
 static MIGRATIONS_DIR: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/../../migrations");
 
-/// Fichier du schéma de référence, à côté des migrations.
+/// Reference schema file, next to the migrations.
 pub const SCHEMA_FILE: &str = "schema.sql";
 
 const SCHEMA_HEADER: &str = "\
--- Schéma obtenu après toutes les migrations.
--- Écrit par `cargo xtask schema`, ne pas modifier à la main.
+-- Schema obtained after all migrations.
+-- Written by `cargo xtask schema`, do not edit by hand.
 ";
 
 #[derive(Debug, thiserror::Error)]
@@ -41,9 +41,9 @@ pub enum DbError {
     Migration(#[from] rusqlite_migration::Error),
 }
 
-/// Trie et contrôle une liste de fichiers `(nom, contenu)` : les noms suivent
-/// `NNNN_nom.sql` et les numéros se suivent à partir de 0001, sans trou ni
-/// doublon. Renvoie les contenus dans l'ordre d'application.
+/// Sorts and checks a list of `(name, content)` files: names follow
+/// `NNNN_name.sql` and numbers follow each other from 0001, with no gap or
+/// duplicate. Returns the contents in application order.
 pub fn ordered<'a>(mut files: Vec<(&'a str, &'a str)>) -> Result<Vec<&'a str>, DbError> {
     files.sort_by_key(|(name, _)| *name);
     let mut contents = Vec::with_capacity(files.len());
@@ -60,7 +60,7 @@ pub fn ordered<'a>(mut files: Vec<(&'a str, &'a str)>) -> Result<Vec<&'a str>, D
     Ok(contents)
 }
 
-/// Numéro d'un fichier `NNNN_nom.sql`, ou `None` si le nom ne suit pas la règle.
+/// Number of a `NNNN_name.sql` file, or `None` if the name breaks the rule.
 fn migration_number(file_name: &str) -> Option<u32> {
     let stem = file_name.strip_suffix(".sql")?;
     let (digits, name) = stem.split_once('_')?;
@@ -74,8 +74,8 @@ fn migration_number(file_name: &str) -> Option<u32> {
     digits.parse().ok()
 }
 
-/// Les migrations embarquées, dans l'ordre. `None` tant que le dépôt n'en
-/// contient aucune : `rusqlite_migration` refuse une liste vide.
+/// The embedded migrations, in order. `None` while the repository has none:
+/// `rusqlite_migration` refuses an empty list.
 pub fn migrations() -> Result<Option<Migrations<'static>>, DbError> {
     let mut files = Vec::new();
     for file in MIGRATIONS_DIR.files() {
@@ -96,7 +96,7 @@ pub fn migrations() -> Result<Option<Migrations<'static>>, DbError> {
     Ok((!steps.is_empty()).then(|| Migrations::new(steps)))
 }
 
-/// Ouvre la base, en la créant au besoin, et applique les migrations manquantes.
+/// Opens the database, creating it if needed, and applies missing migrations.
 pub fn open(path: &Path) -> Result<Connection, DbError> {
     if let Some(dir) = path.parent().filter(|dir| !dir.as_os_str().is_empty()) {
         std::fs::create_dir_all(dir).map_err(|source| DbError::CreateDir {
@@ -107,7 +107,7 @@ pub fn open(path: &Path) -> Result<Connection, DbError> {
     prepare(Connection::open(path)?)
 }
 
-/// Base en mémoire avec toutes les migrations, pour les tests.
+/// In-memory database with all migrations, for tests.
 pub fn open_in_memory() -> Result<Connection, DbError> {
     prepare(Connection::open_in_memory()?)
 }
@@ -123,7 +123,7 @@ fn prepare(mut conn: Connection) -> Result<Connection, DbError> {
     Ok(conn)
 }
 
-/// Le schéma de la base, sous la forme gardée dans `migrations/schema.sql`.
+/// The database schema, in the form kept in `migrations/schema.sql`.
 pub fn schema(conn: &Connection) -> Result<String, DbError> {
     let mut statement = conn.prepare(
         "SELECT sql FROM sqlite_schema \

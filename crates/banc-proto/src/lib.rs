@@ -1,3 +1,3 @@
-//! Messages et types partagés entre le serveur, l'agent et l'assistant de session.
+//! Messages and types shared by the server, the agent and the session helper.
 //!
-//! Les premiers types arrivent en phase 1 (enrôlement, signe de vie).
+//! The first types arrive in phase 1 (enrollment, heartbeat).

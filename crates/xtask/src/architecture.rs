@@ -1,7 +1,7 @@
-//! Règle du dépôt : tout ce qui dépend de l'OS vit dans `banc-platform`.
+//! Repository rule: everything that depends on the OS lives in `banc-platform`.
 //!
-//! Le contrôle parcourt les autres crates `banc-*` et refuse les `cfg` d'OS,
-//! les modules `std::os::<os>` et les dépendances par cible.
+//! The check walks the other `banc-*` crates and refuses OS `cfg`s,
+//! `std::os::<os>` modules and per-target dependencies.
 
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -23,7 +23,7 @@ impl fmt::Display for Violation {
     }
 }
 
-/// Parcourt `crates/banc-*` sauf `banc-platform`.
+/// Walks `crates/banc-*` except `banc-platform`.
 pub fn scan(root: &Path) -> anyhow::Result<Vec<Violation>> {
     let crates = root.join("crates");
     let mut files = Vec::new();
@@ -62,7 +62,7 @@ pub fn scan(root: &Path) -> anyhow::Result<Vec<Violation>> {
     Ok(violations)
 }
 
-/// Ajoute les fichiers `.rs` et `Cargo.toml` du dossier, sans `target/`.
+/// Adds the folder's `.rs` and `Cargo.toml` files, skipping `target/`.
 fn collect(dir: &Path, files: &mut Vec<PathBuf>) -> anyhow::Result<()> {
     for entry in std::fs::read_dir(dir).with_context(|| format!("lecture de {}", dir.display()))? {
         let path = entry?.path();
@@ -110,7 +110,7 @@ fn manifest_line_is_os_specific(line: &str) -> bool {
     line.trim_start().starts_with("[target.")
 }
 
-/// Vrai si `word` apparaît sans lettre, chiffre ni `_` collé autour.
+/// True if `word` appears with no letter, digit or `_` attached around it.
 fn contains_word(text: &str, word: &str) -> bool {
     let is_word_char = |c: char| c.is_alphanumeric() || c == '_';
     text.match_indices(word).any(|(start, _)| {

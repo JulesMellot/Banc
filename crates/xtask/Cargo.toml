@@ -1,6 +1,6 @@
 [package]
 name = "xtask"
-description = "Commandes de développement de Banc (cargo xtask ...)."
+description = "Banc development commands (cargo xtask ...)."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

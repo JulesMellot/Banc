@@ -21,7 +21,7 @@ anyhow = "1.0.104"
 clap = { version = "4", features = ["derive"] }
 include_dir = "0.7.4"
 lexopt = "0.3.2"
-# rusqlite suit la version acceptée par rusqlite_migration.
+# rusqlite follows the version accepted by rusqlite_migration.
 rusqlite = { version = "0.41.0", features = ["bundled"] }
 rusqlite_migration = "2.7.0"
 serde = { version = "1.0.229", features = ["derive"] }
@@ -29,7 +29,7 @@ tempfile = "3.27.0"
 thiserror = "2.0.21"
 tokio = { version = "1.54.1", default-features = false }
 toml = "1.2.1"
-# Sans la macro `#[instrument]`, qui tire une seconde version de `syn`.
+# Without the `#[instrument]` macro, which pulls in a second version of `syn`.
 tracing = { version = "0.1.44", default-features = false, features = ["std"] }
 tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std"] }
@@ -38,7 +38,7 @@ tracing-subscriber = { version = "0.3", default-features = false, features = ["f
 unused_must_use = "deny"
 
 [workspace.lints.clippy]
-# CLAUDE.md : pas de `unwrap()` ni `expect()` hors tests (voir clippy.toml).
+# CLAUDE.md: no `unwrap()` or `expect()` outside tests (see clippy.toml).
 unwrap_used = "deny"
 expect_used = "deny"
 dbg_macro = "deny"

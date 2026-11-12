@@ -1,9 +1,9 @@
-//! `cargo xtask idle-bench` : mémoire et CPU de l'agent au repos.
+//! `cargo xtask idle-bench`: agent memory and CPU at rest.
 //!
-//! Cibles de la section 10 du plan : moins de 15 Mo de RAM et CPU à 0 %.
-//! La mesure lit `/proc`, elle ne tourne donc que sous Linux pour l'instant.
-//! L'assistant de session (cible : 10 Mo) s'ajoute quand il reste en vie,
-//! en phase 1.
+//! Targets from section 10 of the plan: under 15 MB of RAM and CPU at 0%.
+//! The measurement reads `/proc`, so it only runs on Linux for now.
+//! The session helper (target: 10 MB) is added once it stays alive, in
+//! phase 1.
 
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
@@ -13,11 +13,11 @@ use anyhow::{bail, Context};
 
 use crate::cmd::{cargo, output, run, say, tool};
 
-/// Mémoire résidente maximale de l'agent au repos, en kilo-octets.
+/// Maximum resident memory of the agent at rest, in kilobytes.
 const MAX_RSS_KB: u64 = 15 * 1024;
-/// CPU maximal au repos, en millièmes du temps écoulé (1 = 0,1 %).
+/// Maximum CPU at rest, in thousandths of elapsed time (1 = 0.1%).
 const MAX_CPU_PER_MILLE: u64 = 1;
-/// Temps laissé à l'agent pour finir de démarrer avant la mesure.
+/// Time given to the agent to finish starting before the measurement.
 const WARM_UP: Duration = Duration::from_secs(2);
 
 #[derive(Debug, PartialEq, Eq)]
@@ -26,12 +26,12 @@ struct Measure {
     cpu_ticks: u64,
 }
 
-/// Tue le processus à la sortie, même en cas d'erreur.
+/// Kills the process on exit, even on error.
 struct KillOnDrop(Child);
 
 impl Drop for KillOnDrop {
     fn drop(&mut self) {
-        // Le processus peut déjà être mort : il n'y a alors rien à faire.
+        // The process may already be dead: then there is nothing to do.
         let _ = self.0.kill();
         let _ = self.0.wait();
     }
@@ -91,7 +91,7 @@ pub fn idle_bench(root: &Path, seconds: u64) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Nombre de tics de CPU admis sur la durée de mesure.
+/// Number of CPU ticks allowed over the measurement period.
 fn allowed_ticks(seconds: u64, ticks_per_second: u64) -> u64 {
     seconds * ticks_per_second * MAX_CPU_PER_MILLE / 1000
 }
@@ -108,7 +108,7 @@ fn measure(pid: u32) -> anyhow::Result<Measure> {
     })
 }
 
-/// Ligne `VmRSS:     1234 kB` de `/proc/<pid>/status`.
+/// The `VmRSS:     1234 kB` line of `/proc/<pid>/status`.
 fn parse_rss_kb(status: &str) -> Option<u64> {
     let line = status
         .lines()
@@ -116,13 +116,13 @@ fn parse_rss_kb(status: &str) -> Option<u64> {
     line.trim().strip_suffix("kB")?.trim().parse().ok()
 }
 
-/// Somme des temps utilisateur et système de `/proc/<pid>/stat`, en tics.
+/// Sum of user and system times from `/proc/<pid>/stat`, in ticks.
 fn parse_cpu_ticks(stat: &str) -> Option<u64> {
-    // Le nom du processus, entre parenthèses, peut contenir des espaces :
-    // les champs se comptent après la dernière parenthèse fermante.
+    // The process name, in parentheses, may contain spaces: fields are
+    // counted after the last closing parenthesis.
     let (_, fields) = stat.rsplit_once(')')?;
     let mut fields = fields.split_whitespace();
-    // Après le nom viennent l'état puis dix champs, et enfin utime et stime.
+    // After the name come the state, then ten fields, then utime and stime.
     let user: u64 = fields.nth(11)?.parse().ok()?;
     let system: u64 = fields.next()?.parse().ok()?;
     Some(user + system)

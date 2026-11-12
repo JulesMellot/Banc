@@ -1,4 +1,4 @@
-//! `cargo xtask check` : les contrôles de `ci.yml`, un par étape.
+//! `cargo xtask check`: the `ci.yml` checks, one per step.
 
 use std::path::Path;
 use std::time::Instant;
@@ -112,7 +112,7 @@ fn run_step(root: &Path, step: Step, base: &str) -> anyhow::Result<()> {
                 .args(common)
                 .arg(format!("--log-opts={range}"))
                 .current_dir(root))?;
-            // Changements pas encore committés : indexés, puis non indexés.
+            // Uncommitted changes: staged, then unstaged.
             run(tool("gitleaks")
                 .args(common)
                 .args(["--pre-commit", "--staged"])
@@ -136,7 +136,7 @@ fn python(root: &Path) -> anyhow::Result<()> {
         .args(["format", "--check", PYTHON_DIR])
         .current_dir(root))?;
 
-    // Compilation sans exécution et sans écrire de __pycache__.
+    // Compile without running and without writing __pycache__.
     let python = if cfg!(windows) { "python" } else { "python3" };
     let mut scripts = Vec::new();
     for entry in std::fs::read_dir(root.join(PYTHON_DIR)).context("lecture de resolve-scripts")? {
@@ -155,7 +155,7 @@ fn python(root: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// La référence de départ : celle demandée, sinon la branche `main` locale.
+/// The starting reference: the one requested, otherwise the local `main` branch.
 fn base_ref(root: &Path, base: &str) -> anyhow::Result<String> {
     for candidate in [base, "main"] {
         let exists = tool("git")
@@ -174,7 +174,7 @@ fn base_ref(root: &Path, base: &str) -> anyhow::Result<String> {
 
 fn commit_messages(root: &Path, base: &str) -> anyhow::Result<()> {
     let range = format!("{}..HEAD", base_ref(root, base)?);
-    // Un enregistrement par commit : empreinte, auteur, message.
+    // One record per commit: hash, author, message.
     let log = output(
         tool("git")
             .args(["log", "--no-merges", "--format=%h%x1f%an%x1f%B%x1e"])

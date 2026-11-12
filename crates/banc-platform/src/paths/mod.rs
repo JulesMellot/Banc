@@ -1,4 +1,4 @@
-//! Emplacements des fichiers de Banc sur chaque OS.
+//! Locations of Banc's files on each OS.
 
 use std::ffi::OsString;
 use std::path::PathBuf;
@@ -18,12 +18,12 @@ mod windows;
 #[cfg(target_os = "windows")]
 use windows as os;
 
-/// Qui écrit : le service système ou un processus de la session utilisateur.
+/// Who writes: the system service or a process in the user session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Scope {
-    /// `banc-agent` et `banc-server`, lancés par le gestionnaire de services.
+    /// `banc-agent` and `banc-server`, started by the service manager.
     System,
-    /// `banc-session` et la fenêtre, lancés dans la session de l'utilisateur.
+    /// `banc-session` and the window, started in the user's session.
     User,
 }
 
@@ -33,15 +33,15 @@ pub enum PathError {
     MissingEnv(&'static str),
 }
 
-/// Lecture d'une variable d'environnement, injectable dans les tests.
+/// Reads an environment variable, injectable in tests.
 type Env<'a> = &'a dyn Fn(&str) -> Option<OsString>;
 
-/// Dossier des journaux de Banc.
+/// Banc's log folder.
 pub fn log_dir(scope: Scope) -> Result<PathBuf, PathError> {
     os::log_dir(scope, &|name| std::env::var_os(name))
 }
 
-/// Variable d'environnement obligatoire, refusée si elle est vide.
+/// Required environment variable, refused if empty.
 fn required(env: Env<'_>, name: &'static str) -> Result<PathBuf, PathError> {
     match env(name) {
         Some(value) if !value.is_empty() => Ok(PathBuf::from(value)),

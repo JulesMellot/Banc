@@ -1,5 +1,5 @@
-# Chaque nuit sur main : matrice complète, failles du jour, et une issue
-# ouverte en cas d'échec.
+# Every night on main: full matrix, the day's advisories, and an issue
+# opened on failure.
 name: Nightly
 
 on:
@@ -21,7 +21,7 @@ jobs:
       linux: true
 
   failles:
-    name: Failles connues (base du jour)
+    name: Known vulnerabilities (today's database)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -31,11 +31,11 @@ jobs:
           tool: cargo-deny@0.20.2
       - run: cargo deny --locked check advisories
 
-  # À brancher en phase 3 (voir docs/ci.md) : tests d'intégration longs,
-  # gros fichiers, coupure réseau simulée pendant un transfert, reprise.
+  # To be wired up in phase 3 (see docs/ci.md): long integration tests,
+  # large files, network cut simulated during a transfer, resume.
 
   alerte:
-    name: Ouvrir une issue en cas d'échec
+    name: Open an issue on failure
     if: failure() && github.event_name == 'schedule'
     needs: [plateformes, failles]
     runs-on: ubuntu-latest
@@ -47,8 +47,8 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          title="Échec des contrôles de nuit"
-          body="Les contrôles de nuit ont échoué sur main : $RUN_URL"
+          title="Nightly checks failed"
+          body="The nightly checks failed on main: $RUN_URL"
           number=$(gh issue list --state open --search "in:title \"$title\"" --json number --jq '.[0].number')
           if [ -n "$number" ]; then
             gh issue comment "$number" --body "$body"

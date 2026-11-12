@@ -1,7 +1,7 @@
-//! Serveur de Banc.
+//! Banc server.
 //!
-//! Phase 0 : le serveur lit sa configuration, ouvre ses journaux et sa base,
-//! puis attend l'arrêt. L'API arrive en phase 1.
+//! Phase 0: the server reads its configuration, opens its logs and its
+//! database, then waits for shutdown. The API arrives in phase 1.
 
 mod args;
 
@@ -21,8 +21,8 @@ fn main() -> ExitCode {
     match run() {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            // Les journaux ne sont pas forcément ouverts : l'erreur va aussi
-            // sur la sortie d'erreur, lue par le gestionnaire de services.
+            // The logs are not necessarily open: the error also goes to
+            // standard error, which the service manager reads.
             tracing::error!("arrêt sur erreur : {error:#}");
             let _ = writeln!(std::io::stderr(), "{NAME} : {error:#}");
             ExitCode::FAILURE
@@ -31,8 +31,8 @@ fn main() -> ExitCode {
 }
 
 fn run() -> anyhow::Result<()> {
-    // `lexopt` répète le message dans la cause de l'erreur : on ne garde
-    // que le texte.
+    // `lexopt` repeats the message in the error's cause: keep only the
+    // text.
     let command = args::parse(lexopt::Parser::from_env()).map_err(|e| anyhow::anyhow!("{e}"))?;
     let options = match command {
         args::Command::Run(options) => options,

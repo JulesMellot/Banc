@@ -1,3 +1,3 @@
-//! Empreintes BLAKE3, magasin local, transfert vérifié et choix des sources.
+//! BLAKE3 hashes, local store, verified transfer and source selection.
 //!
-//! Vide jusqu'à la phase 3.
+//! Empty until phase 3.

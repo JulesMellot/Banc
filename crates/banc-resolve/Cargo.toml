@@ -1,6 +1,6 @@
 [package]
 name = "banc-resolve"
-description = "Pont vers DaVinci Resolve : détection de version, appel des scripts Python, faux pour les tests."
+description = "Bridge to DaVinci Resolve: version detection, Python script calls, fake for tests."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

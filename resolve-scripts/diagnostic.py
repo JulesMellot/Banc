@@ -1,6 +1,6 @@
-"""Affiche en JSON la version de Python et l'état du module de script de Resolve.
+"""Prints the Python version and the state of Resolve's scripting module as JSON.
 
-Sert au prototype P10 et au diagnostic d'un poste. Ne modifie rien.
+Used by prototype P10 and for workstation diagnostics. Changes nothing.
 """
 
 import json
@@ -9,7 +9,7 @@ import sys
 
 
 def resolve_module_error():
-    """Renvoie None si le module de script de Resolve se charge, sinon l'erreur."""
+    """Returns None if Resolve's scripting module loads, otherwise the error."""
     try:
         import DaVinciResolveScript  # noqa: F401, PLC0415
     except Exception as error:

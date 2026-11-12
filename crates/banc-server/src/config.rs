@@ -1,18 +1,18 @@
-//! Configuration du serveur, lue dans un fichier TOML.
+//! Server configuration, read from a TOML file.
 //!
-//! L'exemple commenté est dans `packaging/server/banc-server.toml`.
+//! The commented example is in `packaging/server/banc-server.toml`.
 
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
-/// Nom du fichier SQLite dans `data_dir`.
+/// Name of the SQLite file in `data_dir`.
 const DATABASE_FILE: &str = "banc.sqlite";
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
-    /// Dossier des données du serveur (base SQLite, puis cache des fichiers).
+    /// Server data folder (SQLite database, later the file cache).
     pub data_dir: PathBuf,
     #[serde(default)]
     pub logs: LogsConfig,
@@ -21,10 +21,10 @@ pub struct Config {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields, default)]
 pub struct LogsConfig {
-    /// Dossier des journaux. Absent : l'emplacement habituel de l'OS.
+    /// Log folder. When absent: the usual location for the OS.
     pub dir: Option<PathBuf>,
     pub level: LogLevel,
-    /// Nombre de jours de journaux gardés.
+    /// Number of days of logs kept.
     pub keep_days: u16,
 }
 
@@ -75,8 +75,8 @@ pub enum ConfigError {
 }
 
 impl Config {
-    /// Lit et contrôle le fichier. Les chemins relatifs partent du dossier du
-    /// fichier de configuration.
+    /// Reads and checks the file. Relative paths start from the configuration
+    /// file's folder.
     pub fn load(path: &Path) -> Result<Self, ConfigError> {
         let text = std::fs::read_to_string(path).map_err(|source| ConfigError::Read {
             path: path.to_path_buf(),
@@ -89,7 +89,7 @@ impl Config {
         Self::parse(&text, base)
     }
 
-    /// Contrôle un texte TOML. `base` sert de départ aux chemins relatifs.
+    /// Checks a TOML text. `base` is the starting point for relative paths.
     pub fn parse(text: &str, base: &Path) -> Result<Self, ConfigError> {
         let mut config: Self = toml::from_str(text)?;
         if config.data_dir.as_os_str().is_empty() {

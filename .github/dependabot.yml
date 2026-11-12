@@ -1,4 +1,4 @@
-# Mises à jour de dépendances proposées chaque semaine, en PR groupées.
+# Dependency updates proposed every week, as grouped PRs.
 version: 2
 updates:
   - package-ecosystem: cargo
@@ -22,7 +22,7 @@ updates:
       frontend:
         patterns: ['*']
     ignore:
-      # svelte-check et typescript-eslint n'acceptent pas encore TypeScript 7.
+      # svelte-check and typescript-eslint do not accept TypeScript 7 yet.
       - dependency-name: typescript
         update-types: ['version-update:semver-major']
 

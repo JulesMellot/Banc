@@ -1,4 +1,4 @@
 fn main() {
-    // `include_dir!` ne signale pas à cargo les fichiers ajoutés au dossier.
+    // `include_dir!` does not tell cargo about files added to the folder.
     println!("cargo:rerun-if-changed=../../migrations");
 }

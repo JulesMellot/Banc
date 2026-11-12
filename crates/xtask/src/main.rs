@@ -1,8 +1,7 @@
-//! Commandes de développement de Banc : `cargo xtask <commande>`.
+//! Banc development commands: `cargo xtask <command>`.
 //!
-//! `check` lance les mêmes contrôles que la CI. Les workflows appellent
-//! `cargo xtask check <étape>`, pour qu'il n'y ait qu'une seule définition
-//! de chaque contrôle.
+//! `check` runs the same checks as CI. The workflows call
+//! `cargo xtask check <step>`, so that each check has a single definition.
 
 mod architecture;
 mod bench;
@@ -122,7 +121,7 @@ fn execute() -> anyhow::Result<()> {
     }
 }
 
-/// Affiche les erreurs d'un contrôle de convention et échoue s'il y en a.
+/// Prints the errors of a convention check and fails if there are any.
 fn report(what: &str, errors: Vec<String>) -> anyhow::Result<()> {
     if errors.is_empty() {
         return Ok(());

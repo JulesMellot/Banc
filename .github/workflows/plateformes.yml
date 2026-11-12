@@ -1,13 +1,13 @@
-# Les trois OS et les cinq cibles. Appelé par pr.yml et nightly.yml :
-# les minutes macOS et Windows coûtent plus cher, on ne les dépense pas à
-# chaque push.
-name: Plateformes
+# The three OSes and the five targets. Called by pr.yml and nightly.yml:
+# macOS and Windows minutes cost more, so they are not spent on every
+# push.
+name: Platforms
 
 on:
   workflow_call:
     inputs:
       linux:
-        description: Lance aussi clippy et les tests sur Linux (déjà faits par ci.yml sur une PR).
+        description: Also run clippy and the tests on Linux (already done by ci.yml on a PR).
         type: boolean
         default: false
 
@@ -20,7 +20,7 @@ env:
 
 jobs:
   tests:
-    name: Clippy et tests (${{ matrix.os }})
+    name: Clippy and tests (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
@@ -35,7 +35,7 @@ jobs:
       - run: cargo xtask check clippy tests
 
   cibles:
-    name: Compilation (${{ matrix.target }})
+    name: Build (${{ matrix.target }})
     strategy:
       fail-fast: false
       matrix:
@@ -54,7 +54,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
-      - name: Installer le compilateur croisé
+      - name: Install the cross compiler
         if: matrix.packages
         run: sudo apt-get update && sudo apt-get install -y ${{ matrix.packages }}
       - uses: ./.github/actions/rust

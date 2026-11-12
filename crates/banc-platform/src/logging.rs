@@ -1,7 +1,7 @@
-//! Journaux sur disque avec rotation quotidienne.
+//! On-disk logs with daily rotation.
 //!
-//! Un fichier par jour, `<nom>.<AAAA-MM-JJ>.log`, et suppression des plus
-//! anciens au-delà de `keep_files`. L'écriture se fait hors du fil appelant.
+//! One file per day, `<name>.<YYYY-MM-DD>.log`, and the oldest are deleted
+//! beyond `keep_files`. Writing happens off the calling thread.
 
 use std::path::PathBuf;
 
@@ -12,26 +12,26 @@ use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::{fmt, Layer, Registry};
 
-/// Lignes en attente d'écriture gardées en mémoire.
+/// Lines waiting to be written, kept in memory.
 const BUFFERED_LINES: usize = 1024;
 
-/// Réglages des journaux d'un binaire.
+/// Log settings for a binary.
 #[derive(Debug, Clone)]
 pub struct LogConfig {
-    /// Dossier des fichiers, créé s'il n'existe pas.
+    /// Folder for the files, created if it does not exist.
     pub dir: PathBuf,
-    /// Préfixe des fichiers, en pratique le nom du binaire.
+    /// File name prefix, in practice the binary's name.
     pub name: String,
-    /// Niveau le plus bavard qui est gardé.
+    /// Most verbose level that is kept.
     pub level: Level,
-    /// Nombre de fichiers quotidiens gardés.
+    /// Number of daily files kept.
     pub keep_files: usize,
-    /// Écrit aussi sur la sortie d'erreur, pour le développement.
+    /// Also writes to standard error, for development.
     pub stderr: bool,
 }
 
 impl LogConfig {
-    /// Niveau `info`, 14 jours gardés, pas de sortie d'erreur.
+    /// `info` level, 14 days kept, no standard error output.
     pub fn new(dir: impl Into<PathBuf>, name: impl Into<String>) -> Self {
         Self {
             dir: dir.into(),
@@ -61,15 +61,15 @@ pub enum LogError {
     AlreadyInitialized,
 }
 
-/// À garder en vie jusqu'à la fin du processus : sa destruction vide le tampon
-/// d'écriture sur le disque.
+/// Keep alive until the process ends: dropping it flushes the write buffer
+/// to disk.
 #[must_use = "les dernières lignes sont perdues si le garde est détruit trop tôt"]
 #[derive(Debug)]
 pub struct LogGuard {
     _worker: WorkerGuard,
 }
 
-/// Installe les journaux pour tout le processus.
+/// Installs the logs for the whole process.
 pub fn init(config: &LogConfig) -> Result<LogGuard, LogError> {
     let (subscriber, guard) = build(config)?;
     tracing::subscriber::set_global_default(subscriber)
@@ -77,7 +77,7 @@ pub fn init(config: &LogConfig) -> Result<LogGuard, LogError> {
     Ok(guard)
 }
 
-/// Construit le collecteur sans l'installer.
+/// Builds the subscriber without installing it.
 pub fn build(
     config: &LogConfig,
 ) -> Result<(Box<dyn Subscriber + Send + Sync>, LogGuard), LogError> {
@@ -95,9 +95,9 @@ pub fn build(
             dir: config.dir.clone(),
             source,
         })?;
-    // La file est allouée d'avance : la taille par défaut (128 000 lignes)
-    // coûte 4 Mo de mémoire au repos. Au-delà, les lignes sont perdues
-    // plutôt que de bloquer l'appelant.
+    // The queue is preallocated: the default size (128,000 lines) costs
+    // 4 MB of memory at rest. Beyond the limit, lines are dropped rather
+    // than blocking the caller.
     let (writer, worker) = NonBlockingBuilder::default()
         .buffered_lines_limit(BUFFERED_LINES)
         .finish(appender);
@@ -167,8 +167,8 @@ mod tests {
         tracing::subscriber::with_default(subscriber, || tracing::info!("nouveau"));
         drop(guard);
 
-        // La rotation trie par date de création du fichier : on vérifie le
-        // nombre gardé et la présence du fichier du jour, pas l'ancien retenu.
+        // Rotation sorts by file creation date: check the number kept and
+        // the presence of today's file, not which old one was retained.
         let (names, content) = read_logs(tmp.path());
         assert_eq!(names.len(), 2, "{names:?}");
         assert!(content.contains("nouveau"), "{content}");

@@ -1,7 +1,7 @@
-//! Service système de Banc : installations, transferts, tunnel.
+//! Banc system service: installs, transfers, tunnel.
 //!
-//! Phase 0 : le service démarre, ouvre ses journaux et attend l'arrêt sans
-//! rien faire. C'est l'état de repos que mesure `cargo xtask idle-bench`.
+//! Phase 0: the service starts, opens its logs and waits for shutdown without
+//! doing anything. This is the idle state that `cargo xtask idle-bench` measures.
 
 mod args;
 
@@ -19,8 +19,8 @@ fn main() -> ExitCode {
     match run() {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            // Les journaux ne sont pas forcément ouverts : l'erreur va aussi
-            // sur la sortie d'erreur, lue par le gestionnaire de services.
+            // The logs are not necessarily open: the error also goes to
+            // standard error, which the service manager reads.
             tracing::error!("arrêt sur erreur : {error:#}");
             let _ = writeln!(std::io::stderr(), "{NAME} : {error:#}");
             ExitCode::FAILURE
@@ -29,8 +29,8 @@ fn main() -> ExitCode {
 }
 
 fn run() -> anyhow::Result<()> {
-    // `lexopt` répète le message dans la cause de l'erreur : on ne garde
-    // que le texte.
+    // `lexopt` repeats the message in the error's cause: keep only the
+    // text.
     let command = args::parse(lexopt::Parser::from_env()).map_err(|e| anyhow::anyhow!("{e}"))?;
     let options = match command {
         args::Command::Run(options) => options,
@@ -46,7 +46,7 @@ fn run() -> anyhow::Result<()> {
     log.stderr = options.stderr;
     let _log_guard = logging::init(&log)?;
 
-    // Un seul fil pour tout l'agent : c'est ce qui tient la cible de mémoire.
+    // A single thread for the whole agent: this is what keeps the memory target.
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()

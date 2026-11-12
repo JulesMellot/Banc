@@ -6,7 +6,7 @@ pub(super) fn log_dir(scope: Scope, env: Env<'_>) -> Result<PathBuf, PathError> 
     match scope {
         Scope::System => Ok(PathBuf::from("/var/log/banc")),
         Scope::User => {
-            // Une variable XDG vide vaut une variable absente.
+            // An empty XDG variable counts as a missing one.
             let state = match required(env, "XDG_STATE_HOME") {
                 Ok(dir) => dir,
                 Err(_) => required(env, "HOME")?.join(".local/state"),

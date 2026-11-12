@@ -1,4 +1,4 @@
-//! Pont vers DaVinci Resolve : détection de version, appel des scripts Python,
-//! faux pour les tests.
+//! Bridge to DaVinci Resolve: version detection, Python script calls, fake
+//! for tests.
 //!
-//! Vide jusqu'à la phase 1 (détection de version).
+//! Empty until phase 1 (version detection).

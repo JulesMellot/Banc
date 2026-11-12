@@ -1,5 +1,5 @@
-# À chaque PR et à chaque mise à jour d'une PR : tout ci.yml, plus ce qui
-# coûte plus cher. `PR prête` est le contrôle exigé par la protection de main.
+# On every PR and every PR update: all of ci.yml, plus what costs more.
+# `PR prête` is the check required by the protection of main.
 name: PR
 
 on:
@@ -24,7 +24,7 @@ jobs:
     uses: ./.github/workflows/plateformes.yml
 
   repos:
-    name: Mesure au repos
+    name: Idle measurement
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -33,8 +33,8 @@ jobs:
           cache-key: release
       - run: cargo xtask idle-bench
 
-  # À brancher quand le produit existe (voir docs/ci.md) :
-  # tests d'intégration de bout en bout, serveur + dépôt + deux agents.
+  # To be wired up once the product exists (see docs/ci.md):
+  # end-to-end integration tests, server + depot + two agents.
 
   prete:
     name: PR prête
@@ -42,11 +42,11 @@ jobs:
     needs: [ci, plateformes, repos]
     runs-on: ubuntu-latest
     steps:
-      - name: Vérifier que tous les contrôles ont réussi
+      - name: Check that all checks succeeded
         env:
           RESULTS: ${{ join(needs.*.result, ' ') }}
         run: |
-          echo "résultats : $RESULTS"
+          echo "results: $RESULTS"
           for result in $RESULTS; do
             if [ "$result" != "success" ]; then
               exit 1

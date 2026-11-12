@@ -1,13 +1,13 @@
-<!-- Le titre suit la convention des commits : type(portée): description à l'infinitif -->
+<!-- The title follows the commit convention: type(scope): description starting with an infinitive verb (in French) -->
 
-## Pourquoi
+## Why
 
-## Ce qui change
+## What changes
 
 ## Tests
 
-- [ ] `cargo xtask check` passe
-- [ ] Le nouveau comportement arrive avec ses tests
-- [ ] Vérifié à la main avec Resolve (si la PR touche au pont Resolve)
+- [ ] `cargo xtask check` passes
+- [ ] The new behavior comes with its tests
+- [ ] Checked by hand with Resolve (if the PR touches the Resolve bridge)
 
 Refs: phase N

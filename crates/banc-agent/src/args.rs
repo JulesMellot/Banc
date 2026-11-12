@@ -1,4 +1,4 @@
-//! Options de la ligne de commande.
+//! Command-line options.
 
 use std::path::PathBuf;
 
