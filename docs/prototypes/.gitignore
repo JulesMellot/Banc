@@ -1,4 +1,4 @@
-# Les photos des préférences de Resolve peuvent contenir des identifiants de
-# bases de projets. On ne versionne que l'extrait utile, recopié à la main.
-photos/
+# Snapshots of Resolve's preferences may contain project database
+# credentials. Only the useful excerpt, copied by hand, is committed.
+snapshots/
 __pycache__/

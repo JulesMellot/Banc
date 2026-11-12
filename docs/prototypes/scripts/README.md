@@ -1,32 +1,32 @@
-# Scripts des prototypes
+# Prototype scripts
 
-Scripts jetables, lancés à la main sur un poste qui a Resolve Studio. Ils ne sont pas embarqués dans Banc. Ils suivent les mêmes règles que `resolve-scripts/` : bibliothèque standard seule, syntaxe Python 3.7, JSON sur la sortie standard, erreurs sur la sortie d'erreur.
+Throwaway scripts, run by hand on a workstation that has Resolve Studio. They are not embedded in Banc. They follow the same rules as `resolve-scripts/`: standard library only, Python 3.7 syntax, JSON on standard output, errors on standard error.
 
-| Script | Prototype | Effet |
+| Script | Prototype | Effect |
 |---|---|---|
-| `inventaire.py` | P1, P2 | Décrit le projet ouvert : clips, chemins, proxys, timelines. Ne modifie rien. |
-| `preferences.py` | P1 | Photographie les fichiers de préférences de Resolve, compare deux photos, réécrit un fichier Resolve fermé. |
-| `medias_test.py` | P2 | Fabrique des rushes ProRes et leurs proxys avec ffmpeg. |
-| `lier_proxys.py` | P2 | Relie les clips aux proxys de leur sous-dossier `Proxy` par `LinkProxyMedia`. |
-| `resolve_connexion.py` | tous | Module commun : connexion à Resolve, écriture du JSON. |
+| `inventory.py` | P1, P2 | Describes the open project: clips, paths, proxies, timelines. Changes nothing. |
+| `preferences.py` | P1 | Snapshots Resolve's preference files, compares two snapshots, rewrites a file with Resolve closed. |
+| `test_media.py` | P2 | Makes ProRes rushes and their proxies with ffmpeg. |
+| `link_proxies.py` | P2 | Links clips to the proxies in their `Proxy` subfolder through `LinkProxyMedia`. |
+| `resolve_connection.py` | all | Shared module: connection to Resolve, JSON output. |
 
-## Préparer le poste
+## Preparing the workstation
 
-1. Python 3 en 64 bits. Sur Mac, celui des outils de ligne de commande Apple suffit (`python3`). Sur Windows, celui de python.org, case « Add to PATH » cochée.
-2. Dans Resolve : Préférences > Système > Général > « External scripting using » sur **Local**. Redémarrer Resolve.
-3. Vérifier la connexion, Resolve ouvert sur un projet :
+1. 64-bit Python 3. On a Mac, the one from Apple's command-line tools is enough (`python3`). On Windows, the one from python.org, with the "Add to PATH" box checked.
+2. In Resolve: Preferences > System > General > "External scripting using" set to **Local**. Restart Resolve.
+3. Check the connection, with Resolve open on a project:
 
    ```
-   python3 inventaire.py
+   python3 inventory.py
    ```
 
-   Sur Windows, remplacer `python3` par `python`. Le script règle seul `RESOLVE_SCRIPT_API`, `RESOLVE_SCRIPT_LIB` et le chemin des modules, avec les emplacements par défaut de Resolve. Si Resolve est installé ailleurs, définir ces deux variables avant de lancer le script, comme l'explique le `README.txt` de `Developer/Scripting`.
+   On Windows, replace `python3` with `python`. The script sets `RESOLVE_SCRIPT_API`, `RESOLVE_SCRIPT_LIB` and the module path by itself, using Resolve's default locations. If Resolve is installed elsewhere, set these two variables before running the script, as explained in the `README.txt` of `Developer/Scripting`.
 
-Noter dans la réponse de P10 la version de Python qui a fonctionné (`python3 --version`).
+Record in the P10 answer the Python version that worked (`python3 --version`).
 
-## Contrôle
+## Checks
 
-Les scripts ne sont pas dans `cargo xtask check`. Avant de les modifier :
+The scripts are not part of `cargo xtask check`. Before changing them:
 
 ```
 ruff check docs/prototypes/scripts
