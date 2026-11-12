@@ -1,19 +1,19 @@
 # Banc
 
-Banc prépare les postes DaVinci Resolve d'une équipe de montage. Un serveur sur un VPS décrit ce que chaque poste doit avoir. Un agent installé sur chaque machine vérifie le poste, installe ce qui manque, récupère les fichiers des projets et ouvre Resolve dessus. Outil interne.
+Banc sets up the DaVinci Resolve workstations of an editing team. A server on a VPS describes what each workstation must have. An agent installed on each machine checks the workstation, installs what is missing, fetches the project files and opens Resolve on them. Internal tool.
 
-Le dépôt en est à la phase 0 du plan. Les trois binaires démarrent, ouvrent leurs journaux et attendent. Le produit commence en phase 1.
+The repository is at phase 0 of the plan. The three binaries start, open their logs and wait. The product starts in phase 1.
 
-## Où lire
+## Where to read
 
-- `docs/PLAN.md` : le cahier des charges, phase par phase.
-- `CLAUDE.md` : les principes, la stack et les règles de code.
-- `docs/developpement.md` : installer les outils et lancer les contrôles.
-- `docs/ci.md` : les workflows et les réglages GitHub à poser à la main.
-- `docs/prototypes.md` : les réponses des prototypes Resolve.
-- `docs/mesures.md` : la mémoire et le CPU au repos, phase par phase.
+- `docs/PLAN.md`: the specification, phase by phase.
+- `CLAUDE.md`: principles, stack and code rules.
+- `docs/development.md`: installing the tools and running the checks.
+- `docs/ci.md`: the workflows and the GitHub settings to apply by hand.
+- `docs/prototypes.md`: the answers from the Resolve prototypes.
+- `docs/measurements.md`: memory and CPU at rest, phase by phase.
 
-## Démarrer
+## Getting started
 
 ```bash
 cargo xtask hooks
@@ -23,4 +23,4 @@ cargo xtask hooks
 cargo xtask check
 ```
 
-La première commande active le contrôle des messages de commit. La seconde lance tout ce que lance la CI.
+The first command enables the commit message check. The second runs everything CI runs.

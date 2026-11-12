@@ -1,6 +1,6 @@
 [package]
 name = "banc-proto"
-description = "Messages et types partagés entre le serveur, l'agent et l'assistant de session."
+description = "Messages and types shared by the server, the agent and the session helper."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

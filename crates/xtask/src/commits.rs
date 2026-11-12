@@ -1,6 +1,6 @@
-//! Convention des messages de commit et des titres de PR.
+//! Convention for commit messages and PR titles.
 //!
-//! Référence : section 15 de `docs/PLAN.md`.
+//! Reference: section 15 of `docs/PLAN.md`.
 
 pub const TYPES: &[&str] = &[
     "feat", "fix", "refactor", "perf", "test", "docs", "build", "ci", "chore",
@@ -22,39 +22,39 @@ pub const SCOPES: &[&str] = &[
     "docs",
 ];
 
-/// Types qui touchent souvent tout le dépôt : la portée y est facultative
-/// (`ci: ajouter la mesure au repos sur les PR`).
+/// Types that often touch the whole repository: the scope is optional for
+/// them (`ci: add the idle measurement to PRs`).
 const SCOPE_OPTIONAL: &[&str] = &["docs", "build", "ci", "chore"];
 
 const MAX_SUBJECT: usize = 72;
 
 pub const HELP: &str = "
-Format attendu :
+Expected format:
 
-  type(portée): description à l'infinitif, sans majuscule ni point final
+  type(scope): imperative description, no capital letter, no final period
 
-  Corps facultatif : pourquoi ce changement.
+  Optional body: why this change.
 
   Refs: phase 3, P5
 
-Types : feat, fix, refactor, perf, test, docs, build, ci, chore.
-Portées : server, agent, session, blobs, tunnel, resolve, platform, proto,
-ui, scripts, packaging, ci, docs (facultative pour docs, build, ci, chore).
-Détail : section 15 de docs/PLAN.md.";
+Types: feat, fix, refactor, perf, test, docs, build, ci, chore.
+Scopes: server, agent, session, blobs, tunnel, resolve, platform, proto,
+ui, scripts, packaging, ci, docs (optional for docs, build, ci, chore).
+Details: section 15 of docs/PLAN.md.";
 
-/// Les mises à jour de dépendances automatiques gardent leur propre format.
+/// Automatic dependency updates keep their own format.
 pub fn is_exempt_author(author: &str) -> bool {
     author == "dependabot[bot]"
 }
 
-/// Contrôle la première ligne d'un commit, ou le titre d'une PR.
+/// Checks the first line of a commit, or a PR title.
 pub fn check_subject(subject: &str) -> Vec<String> {
     parse_subject(subject).err().unwrap_or_default()
 }
 
-/// Contrôle un message de commit complet.
+/// Checks a full commit message.
 pub fn check_message(message: &str) -> Vec<String> {
-    // Les lignes de commentaire de git ne font pas partie du message.
+    // Git comment lines are not part of the message.
     let lines: Vec<&str> = message
         .lines()
         .take_while(|line| !line.starts_with("# ------------------------ >8"))
@@ -69,11 +69,11 @@ pub fn check_message(message: &str) -> Vec<String> {
         Err(errors) => (errors, false),
     };
     if body.first().is_some_and(|line| !line.trim().is_empty()) {
-        errors.push("la deuxième ligne doit être vide".to_owned());
+        errors.push("the second line must be empty".to_owned());
     }
     if !body.iter().any(|line| is_refs_line(line)) {
         errors.push(
-            "pied de message absent : une ligne `Refs: phase N` (et le prototype, `Refs: phase 3, P5`)"
+            "missing footer: a `Refs: phase N` line (plus the prototype, `Refs: phase 3, P5`)"
                 .to_owned(),
         );
     }
@@ -82,7 +82,7 @@ pub fn check_message(message: &str) -> Vec<String> {
             .iter()
             .any(|line| line.starts_with("BREAKING CHANGE: "))
     {
-        errors.push("un `!` demande une ligne `BREAKING CHANGE: ...` dans le corps".to_owned());
+        errors.push("a `!` requires a `BREAKING CHANGE: ...` line in the body".to_owned());
     }
     errors
 }
@@ -98,7 +98,7 @@ struct Subject<'a> {
 fn parse_subject(subject: &str) -> Result<Subject<'_>, Vec<String>> {
     let Some((prefix, description)) = subject.split_once(": ") else {
         return Err(vec![
-            "format attendu : `type(portée): description`".to_owned()
+            "expected format: `type(scope): description`".to_owned()
         ]);
     };
     let (prefix, breaking) = match prefix.strip_suffix('!') {
@@ -110,7 +110,7 @@ fn parse_subject(subject: &str) -> Result<Subject<'_>, Vec<String>> {
             Some(scope) => (kind, Some(scope)),
             None => {
                 return Err(vec![
-                    "format attendu : `type(portée): description`".to_owned()
+                    "expected format: `type(scope): description`".to_owned()
                 ])
             }
         },
@@ -119,14 +119,14 @@ fn parse_subject(subject: &str) -> Result<Subject<'_>, Vec<String>> {
 
     let mut errors = Vec::new();
     if !TYPES.contains(&kind) {
-        errors.push(format!("type inconnu : `{kind}`"));
+        errors.push(format!("unknown type: `{kind}`"));
     }
     match scope {
         Some(scope) if !SCOPES.contains(&scope) => {
-            errors.push(format!("portée inconnue : `{scope}`"));
+            errors.push(format!("unknown scope: `{scope}`"));
         }
         None if TYPES.contains(&kind) && !SCOPE_OPTIONAL.contains(&kind) => {
-            errors.push(format!("le type `{kind}` demande une portée"));
+            errors.push(format!("the `{kind}` type requires a scope"));
         }
         _ => {}
     }
@@ -134,7 +134,7 @@ fn parse_subject(subject: &str) -> Result<Subject<'_>, Vec<String>> {
     let length = subject.chars().count();
     if length > MAX_SUBJECT {
         errors.push(format!(
-            "première ligne trop longue : {length} caractères, {MAX_SUBJECT} au plus"
+            "first line too long: {length} characters, {MAX_SUBJECT} at most"
         ));
     }
 
@@ -153,41 +153,47 @@ fn parse_subject(subject: &str) -> Result<Subject<'_>, Vec<String>> {
 fn check_description(description: &str) -> Vec<String> {
     let mut errors = Vec::new();
     if description.trim().is_empty() {
-        return vec!["description vide".to_owned()];
+        return vec!["empty description".to_owned()];
     }
     if description != description.trim() {
-        errors.push("espaces en trop autour de la description".to_owned());
+        errors.push("extra spaces around the description".to_owned());
     }
     if description.chars().next().is_some_and(char::is_uppercase) {
-        errors.push("la description commence par une minuscule".to_owned());
+        errors.push("the description starts with a lowercase letter".to_owned());
     }
     if description.trim_end().ends_with('.') {
-        errors.push("pas de point final".to_owned());
+        errors.push("no final period".to_owned());
     }
-    if !starts_with_infinitive(description) {
+    if !starts_with_imperative(description) {
         errors.push(
-            "la description commence par un verbe à l'infinitif (`ajouter`, `ne plus bloquer`)"
-                .to_owned(),
+            "the description starts with an imperative verb (`add`, `stop blocking`)".to_owned(),
         );
     }
     errors
 }
 
-/// Vrai si le premier mot, passé une négation ou un pronom, a une terminaison
-/// d'infinitif français. C'est une approximation : elle écarte `update`,
-/// `corrections` ou `ajout de`, pas tous les mots qui ne sont pas des verbes.
-fn starts_with_infinitive(description: &str) -> bool {
-    const SKIPPED: &[&str] = &["ne", "pas", "plus", "jamais", "rien", "se"];
-    const ENDINGS: &[&str] = &["er", "ir", "ïr", "re"];
-    description
-        .split_whitespace()
-        .find(|word| !SKIPPED.contains(word))
-        .is_some_and(|word| {
-            let word = word.trim_end_matches([',', ';']);
-            word.chars()
-                .all(|c| c.is_alphabetic() || c == '\'' || c == '-')
-                && ENDINGS.iter().any(|ending| word.ends_with(ending))
-        })
+/// True if the first word looks like an English verb in the imperative mood.
+/// This is an approximation: it rules out `added`, `adding`, `adds` or
+/// `fixes`, not every word that is not a verb.
+fn starts_with_imperative(description: &str) -> bool {
+    // Base forms that end like a third person, past tense or gerund.
+    const BASE_FORMS: &[&str] = &["need", "seed", "bring", "string"];
+    description.split_whitespace().next().is_some_and(|word| {
+        // Case is checked separately.
+        let word = word.trim_end_matches([',', ';']).to_lowercase();
+        let word = word.as_str();
+        if word.is_empty() || !word.chars().all(|c| c.is_ascii_lowercase() || c == '-') {
+            return false;
+        }
+        if BASE_FORMS.contains(&word) {
+            return true;
+        }
+        let third_person = word.ends_with('s')
+            && !["ss", "us", "is"]
+                .iter()
+                .any(|ending| word.ends_with(ending));
+        !(third_person || word.ends_with("ed") || word.ends_with("ing"))
+    })
 }
 
 /// `Refs: phase 3`, `Refs: phase 3, P5`, `Refs: P1, P2`.
@@ -209,23 +215,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn exemples_du_plan_acceptes() {
+    fn plan_examples_accepted() {
         for subject in [
-            "feat(blobs): choisir les sources directes avant le cache",
-            "fix(tunnel): rouvrir le flux après une coupure du relais",
-            "test(agent): couvrir le refus d'un manifeste mal signé",
-            "ci: ajouter la mesure au repos sur les PR",
-            "refactor(platform)!: regrouper les chemins Resolve par OS",
-            "fix(agent): ne plus bloquer l'arrêt pendant un transfert",
-            "build: mettre à jour les dépendances",
-            "docs(docs): décrire la mise en place du dépôt",
+            "feat(blobs): prefer direct sources over the cache",
+            "fix(tunnel): reopen the stream after a relay outage",
+            "test(agent): cover the rejection of a badly signed manifest",
+            "ci: add the idle measurement to PRs",
+            "refactor(platform)!: group Resolve paths by OS",
+            "fix(agent): stop blocking shutdown during a transfer",
+            "build: update dependencies",
+            "docs(docs): describe the repository setup",
+            "fix(blobs): process ranges in order",
+            "perf(blobs): seed the index from the depot",
         ] {
             assert_eq!(check_subject(subject), Vec::<String>::new(), "{subject}");
         }
     }
 
     #[test]
-    fn messages_refuses_par_le_plan() {
+    fn messages_refused_by_the_plan() {
         for subject in [
             "update",
             "wip",
@@ -238,73 +246,75 @@ mod tests {
     }
 
     #[test]
-    fn decoupage_du_titre() {
-        let subject = parse_subject("refactor(platform)!: regrouper les chemins").unwrap();
+    fn subject_parsing() {
+        let subject = parse_subject("refactor(platform)!: group the paths").unwrap();
         assert_eq!(
             subject,
             Subject {
                 kind: "refactor",
                 scope: Some("platform"),
                 breaking: true,
-                description: "regrouper les chemins",
+                description: "group the paths",
             }
         );
     }
 
     fn single_error(subject: &str) -> String {
         let errors = check_subject(subject);
-        assert_eq!(errors.len(), 1, "{subject} : {errors:?}");
+        assert_eq!(errors.len(), 1, "{subject}: {errors:?}");
         errors.into_iter().next().unwrap()
     }
 
     #[test]
-    fn type_et_portee() {
-        assert!(single_error("feature(agent): ajouter le signe de vie").contains("type inconnu"));
-        assert!(single_error("feat(client): ajouter le signe de vie").contains("portée inconnue"));
-        assert!(single_error("feat: ajouter le signe de vie").contains("demande une portée"));
-        assert!(single_error("feat(agent: ajouter le signe de vie").contains("format attendu"));
-        assert!(single_error("feat(agent):ajouter le signe de vie").contains("format attendu"));
+    fn type_and_scope() {
+        assert!(single_error("feature(agent): add the heartbeat").contains("unknown type"));
+        assert!(single_error("feat(client): add the heartbeat").contains("unknown scope"));
+        assert!(single_error("feat: add the heartbeat").contains("requires a scope"));
+        assert!(single_error("feat(agent: add the heartbeat").contains("expected format"));
+        assert!(single_error("feat(agent):add the heartbeat").contains("expected format"));
     }
 
     #[test]
-    fn forme_de_la_description() {
-        assert!(single_error("fix(agent): Corriger la reprise").contains("minuscule"));
-        assert!(single_error("fix(agent): corriger la reprise.").contains("point final"));
-        assert!(single_error("fix(agent): correction de la reprise").contains("infinitif"));
-        assert!(single_error("fix(agent): fixed resume").contains("infinitif"));
-        assert!(single_error("fix(agent):  corriger la reprise").contains("espaces"));
-        assert!(single_error("fix(agent): ").contains("vide"));
+    fn description_shape() {
+        assert!(single_error("fix(agent): Fix the resume").contains("lowercase"));
+        assert!(single_error("fix(agent): fix the resume.").contains("final period"));
+        assert!(single_error("fix(agent): fixed the resume").contains("imperative"));
+        assert!(single_error("fix(agent): fixes the resume").contains("imperative"));
+        assert!(single_error("fix(agent): fixing the resume").contains("imperative"));
+        assert!(single_error("fix(agent): résumé fix").contains("imperative"));
+        assert!(single_error("fix(agent):  fix the resume").contains("spaces"));
+        assert!(single_error("fix(agent): ").contains("empty"));
     }
 
     #[test]
-    fn longueur_de_la_premiere_ligne() {
-        let ok = format!("fix(agent): corriger {}", "é".repeat(51));
+    fn first_line_length() {
+        let ok = format!("fix(agent): fix {}", "a".repeat(56));
         assert_eq!(ok.chars().count(), 72);
         assert_eq!(check_subject(&ok), Vec::<String>::new());
-        let long = format!("{ok}é");
-        assert!(single_error(&long).contains("trop longue"));
+        let long = format!("{ok}a");
+        assert!(single_error(&long).contains("too long"));
     }
 
     #[test]
-    fn message_complet_accepte() {
-        let message = "feat(blobs): choisir les sources directes avant le cache\n\
+    fn full_message_accepted() {
+        let message = "feat(blobs): prefer direct sources over the cache\n\
                        \n\
-                       Le relais coûte de la bande passante au VPS.\n\
+                       The relay costs the VPS bandwidth.\n\
                        \n\
                        Refs: phase 3, P5\n\
-                       Co-Authored-By: Quelqu'un <q@example.org>\n";
+                       Co-Authored-By: Someone <s@example.org>\n";
         assert_eq!(check_message(message), Vec::<String>::new());
     }
 
     #[test]
-    fn pied_de_message_obligatoire() {
-        let errors = check_message("feat(blobs): choisir les sources directes\n");
+    fn footer_required() {
+        let errors = check_message("feat(blobs): prefer direct sources\n");
         assert_eq!(errors.len(), 1, "{errors:?}");
         assert!(errors[0].contains("Refs"));
     }
 
     #[test]
-    fn formes_du_pied_de_message() {
+    fn footer_forms() {
         for line in [
             "Refs: phase 0",
             "Refs: phase 3, P5",
@@ -317,7 +327,7 @@ mod tests {
             "Refs:",
             "Refs: ",
             "Refs: phase",
-            "Refs: phase trois",
+            "Refs: phase three",
             "refs: phase 3",
             "Refs: #12",
             "Refs: phase 3,P5",
@@ -327,39 +337,39 @@ mod tests {
     }
 
     #[test]
-    fn deuxieme_ligne_vide() {
-        let errors = check_message("fix(agent): corriger la reprise\nRefs: phase 3\n");
+    fn second_line_empty() {
+        let errors = check_message("fix(agent): fix the resume\nRefs: phase 3\n");
         assert_eq!(errors.len(), 1, "{errors:?}");
-        assert!(errors[0].contains("deuxième ligne"));
+        assert!(errors[0].contains("second line"));
     }
 
     #[test]
-    fn changement_cassant() {
-        let subject = "refactor(proto)!: renommer le champ des empreintes";
+    fn breaking_change() {
+        let subject = "refactor(proto)!: rename the hash field";
         let errors = check_message(&format!("{subject}\n\nRefs: phase 3\n"));
         assert_eq!(errors.len(), 1, "{errors:?}");
         assert!(errors[0].contains("BREAKING CHANGE"));
 
         let message =
-            format!("{subject}\n\nBREAKING CHANGE: agents antérieurs refusés.\n\nRefs: phase 3\n");
+            format!("{subject}\n\nBREAKING CHANGE: older agents are refused.\n\nRefs: phase 3\n");
         assert_eq!(check_message(&message), Vec::<String>::new());
     }
 
     #[test]
-    fn commentaires_de_git_ignores() {
-        let message = "# Saisissez le message de validation\n\
-                       fix(agent): corriger la reprise\n\
+    fn git_comments_ignored() {
+        let message = "# Please enter the commit message for your changes.\n\
+                       fix(agent): fix the resume\n\
                        \n\
                        Refs: phase 3\n\
                        # ------------------------ >8 ------------------------\n\
                        diff --git a/x b/x\n\
-                       Refs: n'importe quoi\n";
+                       Refs: anything\n";
         assert_eq!(check_message(message), Vec::<String>::new());
     }
 
     #[test]
-    fn auteurs_dispenses() {
+    fn exempt_authors() {
         assert!(is_exempt_author("dependabot[bot]"));
-        assert!(!is_exempt_author("Léa"));
+        assert!(!is_exempt_author("Lea"));
     }
 }

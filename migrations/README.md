@@ -1,15 +1,15 @@
-# Migrations de la base du serveur
+# Server database migrations
 
-Une migration est un fichier `NNNN_nom_en_minuscules.sql`. Les numéros se suivent à partir de `0001`, sans trou. Une migration fusionnée dans `main` ne se modifie plus : on en ajoute une nouvelle.
+A migration is a file named `NNNN_lowercase_name.sql`. Numbers follow each other from `0001`, with no gap. A migration merged into `main` is never modified again: add a new one instead.
 
-`banc-server` embarque ces fichiers à la compilation et applique ceux qui manquent à l'ouverture de la base.
+`banc-server` embeds these files at compile time and applies the missing ones when it opens the database.
 
-`schema.sql` garde le schéma obtenu une fois toutes les migrations appliquées sur une base vide. Après l'ajout d'une migration :
+`schema.sql` keeps the schema obtained once all migrations are applied to an empty database. After adding a migration:
 
 ```bash
 cargo xtask schema
 ```
 
-Relis le diff de `schema.sql` avant de committer. `cargo xtask check migrations` échoue si le fichier ne correspond plus aux migrations.
+Review the diff of `schema.sql` before committing. `cargo xtask check migrations` fails if the file no longer matches the migrations.
 
-Le modèle de données visé est décrit dans la section 3 de `docs/PLAN.md`. Les premières tables arrivent en phase 1.
+The target data model is described in section 3 of `docs/PLAN.md`. The first tables arrive in phase 1.

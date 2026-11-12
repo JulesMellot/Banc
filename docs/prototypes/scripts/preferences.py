@@ -1,13 +1,13 @@
-"""Trouve le fichier où Resolve range ses préférences Media Storage, et teste l'écriture.
+"""Finds the file where Resolve stores its Media Storage preferences, and tests writing to it.
 
-Prototype P1. Trois commandes :
+Prototype P1. Three commands:
 
-    python3 preferences.py photo avant      # copie des fichiers de préférences
-    python3 preferences.py ecarts avant apres   # ce qui a changé entre deux photos
-    python3 preferences.py remettre apres <fichier>   # réécrit un fichier, Resolve fermé
+    python3 preferences.py snapshot before         # copy of the preference files
+    python3 preferences.py diff before after       # what changed between two snapshots
+    python3 preferences.py restore after <file>    # rewrites a file, Resolve closed
 
-Les photos vont dans --dossier (par défaut ../p1/photos). Seuls les fichiers de
-moins de 2 Mo sont gardés, hors caches, LUT, Fusion et bases de projets.
+Snapshots go to --dir (default ../p1/snapshots). Only files under 2 MB are
+kept, excluding caches, LUTs, Fusion and project databases.
 """
 
 import argparse
@@ -21,12 +21,12 @@ import platform
 import shutil
 import sys
 
-from resolve_connexion import quitter, resolve_est_lance
+from resolve_connection import fail, resolve_is_running
 
-TAILLE_MAX = 2 * 1024 * 1024
+MAX_SIZE = 2 * 1024 * 1024
 
-# Dossiers ignorés : volumineux, et sans rapport avec les préférences.
-IGNORES = {
+# Ignored folders: large, and unrelated to preferences.
+IGNORED = {
     "cacheclip",
     "developer",
     "fusion",
@@ -39,163 +39,161 @@ IGNORES = {
 }
 
 
-def racines():
-    maison = os.path.expanduser("~")
-    systeme = platform.system()
-    if systeme == "Darwin":
+def roots():
+    home = os.path.expanduser("~")
+    system = platform.system()
+    if system == "Darwin":
         return [
-            os.path.join(maison, "Library", "Preferences", "Blackmagic Design"),
-            os.path.join(maison, "Library", "Application Support", "Blackmagic Design"),
+            os.path.join(home, "Library", "Preferences", "Blackmagic Design"),
+            os.path.join(home, "Library", "Application Support", "Blackmagic Design"),
             "/Library/Application Support/Blackmagic Design",
             "/Library/Preferences/Blackmagic Design",
         ]
-    if systeme == "Windows":
+    if system == "Windows":
         return [
             os.path.join(os.environ.get(variable, ""), "Blackmagic Design")
             for variable in ("APPDATA", "LOCALAPPDATA", "PROGRAMDATA")
             if os.environ.get(variable)
         ]
     return [
-        os.path.join(maison, ".local", "share", "DaVinciResolve"),
+        os.path.join(home, ".local", "share", "DaVinciResolve"),
         "/opt/resolve/configs",
     ]
 
 
-def lister(racine):
-    for dossier, sous_dossiers, fichiers in os.walk(racine):
-        sous_dossiers[:] = [nom for nom in sous_dossiers if nom.lower() not in IGNORES]
-        for nom in fichiers:
-            yield os.path.join(dossier, nom)
+def list_files(root):
+    for folder, subfolders, files in os.walk(root):
+        subfolders[:] = [name for name in subfolders if name.lower() not in IGNORED]
+        for name in files:
+            yield os.path.join(folder, name)
 
 
-def decrire(chemin):
+def describe(path):
     try:
-        taille = os.path.getsize(chemin)
-        if taille > TAILLE_MAX:
-            return {"taille": taille, "trop_gros": True}
-        with open(chemin, "rb") as fichier:
-            contenu = fichier.read()
-    except OSError as erreur:
-        return {"erreur": str(erreur)}
+        size = os.path.getsize(path)
+        if size > MAX_SIZE:
+            return {"size": size, "too_large": True}
+        with open(path, "rb") as file:
+            content = file.read()
+    except OSError as error:
+        return {"error": str(error)}
     return {
-        "taille": taille,
-        "modifie": os.path.getmtime(chemin),
-        "sha256": hashlib.sha256(contenu).hexdigest(),
-        "contenu": base64.b64encode(contenu).decode("ascii"),
+        "size": size,
+        "modified": os.path.getmtime(path),
+        "sha256": hashlib.sha256(content).hexdigest(),
+        "content": base64.b64encode(content).decode("ascii"),
     }
 
 
-def chemin_photo(dossier, nom):
-    return os.path.join(dossier, nom + ".json")
+def snapshot_path(folder, name):
+    return os.path.join(folder, name + ".json")
 
 
-def lire_photo(dossier, nom):
-    chemin = chemin_photo(dossier, nom)
-    if not os.path.exists(chemin):
-        quitter(f"photo introuvable : {chemin}")
-    with open(chemin, encoding="utf-8") as fichier:
-        return json.load(fichier)
+def read_snapshot(folder, name):
+    path = snapshot_path(folder, name)
+    if not os.path.exists(path):
+        fail(f"snapshot not found: {path}")
+    with open(path, encoding="utf-8") as file:
+        return json.load(file)
 
 
-def photo(args):
-    if resolve_est_lance():
-        sys.stderr.write("attention : Resolve est lancé, il n'a peut-être pas encore écrit.\n")
-    fichiers = {}
-    presentes = [racine for racine in racines() if os.path.isdir(racine)]
-    for racine in presentes:
-        for chemin in lister(racine):
-            fichiers[chemin] = decrire(chemin)
-    os.makedirs(args.dossier, exist_ok=True)
-    with open(chemin_photo(args.dossier, args.nom), "w", encoding="utf-8") as sortie:
+def snapshot(args):
+    if resolve_is_running():
+        sys.stderr.write("warning: Resolve is running, it may not have written yet.\n")
+    files = {}
+    present = [root for root in roots() if os.path.isdir(root)]
+    for root in present:
+        for path in list_files(root):
+            files[path] = describe(path)
+    os.makedirs(args.dir, exist_ok=True)
+    with open(snapshot_path(args.dir, args.name), "w", encoding="utf-8") as output:
         json.dump(
             {
                 "date": datetime.datetime.now().isoformat(timespec="seconds"),
-                "systeme": platform.system(),
-                "racines": presentes,
-                "fichiers": fichiers,
+                "system": platform.system(),
+                "roots": present,
+                "files": files,
             },
-            sortie,
+            output,
             ensure_ascii=False,
             indent=1,
         )
-    sys.stderr.write(f"{len(fichiers)} fichiers photographiés dans {args.nom}\n")
+    sys.stderr.write(f"{len(files)} files captured in {args.name}\n")
     return 0
 
 
-def texte(description):
-    """Contenu du fichier en texte, ou None s'il n'est pas lisible comme du texte."""
-    if "contenu" not in description:
+def text(description):
+    """The file content as text, or None if it cannot be read as text."""
+    if "content" not in description:
         return None
     try:
-        return base64.b64decode(description["contenu"]).decode("utf-8").splitlines(True)
+        return base64.b64decode(description["content"]).decode("utf-8").splitlines(True)
     except UnicodeDecodeError:
         return None
 
 
-def ecarts(args):
-    avant = lire_photo(args.dossier, args.avant)["fichiers"]
-    apres = lire_photo(args.dossier, args.apres)["fichiers"]
-    for chemin in sorted(set(avant) - set(apres)):
-        sys.stdout.write(f"supprimé : {chemin}\n")
-    for chemin in sorted(set(apres) - set(avant)):
-        sys.stdout.write(f"ajouté : {chemin}\n")
-    for chemin in sorted(set(avant) & set(apres)):
-        ancien, nouveau = avant[chemin], apres[chemin]
-        if ancien.get("sha256") == nouveau.get("sha256"):
+def diff(args):
+    before = read_snapshot(args.dir, args.before)["files"]
+    after = read_snapshot(args.dir, args.after)["files"]
+    for path in sorted(set(before) - set(after)):
+        sys.stdout.write(f"deleted: {path}\n")
+    for path in sorted(set(after) - set(before)):
+        sys.stdout.write(f"added: {path}\n")
+    for path in sorted(set(before) & set(after)):
+        old, new = before[path], after[path]
+        if old.get("sha256") == new.get("sha256"):
             continue
-        sys.stdout.write(f"modifié : {chemin}\n")
-        lignes_avant, lignes_apres = texte(ancien), texte(nouveau)
-        if lignes_avant is None or lignes_apres is None:
-            taille_avant, taille_apres = ancien.get("taille"), nouveau.get("taille")
-            sys.stdout.write(f"  binaire, {taille_avant} -> {taille_apres} octets\n")
+        sys.stdout.write(f"modified: {path}\n")
+        old_lines, new_lines = text(old), text(new)
+        if old_lines is None or new_lines is None:
+            old_size, new_size = old.get("size"), new.get("size")
+            sys.stdout.write(f"  binary, {old_size} -> {new_size} bytes\n")
             continue
-        sys.stdout.writelines(
-            difflib.unified_diff(lignes_avant, lignes_apres, args.avant, args.apres)
-        )
+        sys.stdout.writelines(difflib.unified_diff(old_lines, new_lines, args.before, args.after))
     return 0
 
 
-def remettre(args):
-    if resolve_est_lance():
-        quitter("Resolve est lancé. Le fermer avant d'écrire dans ses préférences.")
-    description = lire_photo(args.dossier, args.nom)["fichiers"].get(args.fichier)
-    if description is None or "contenu" not in description:
-        quitter(f"ce fichier n'a pas de contenu dans la photo {args.nom} : {args.fichier}")
-    if os.path.exists(args.fichier):
-        horodatage = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-        sauvegarde = f"{args.fichier}.banc-{horodatage}"
-        shutil.copy2(args.fichier, sauvegarde)
-        sys.stderr.write(f"sauvegarde : {sauvegarde}\n")
-    with open(args.fichier, "wb") as fichier:
-        fichier.write(base64.b64decode(description["contenu"]))
-    sys.stderr.write(f"réécrit depuis la photo {args.nom} : {args.fichier}\n")
+def restore(args):
+    if resolve_is_running():
+        fail("Resolve is running. Close it before writing to its preferences.")
+    description = read_snapshot(args.dir, args.name)["files"].get(args.file)
+    if description is None or "content" not in description:
+        fail(f"this file has no content in snapshot {args.name}: {args.file}")
+    if os.path.exists(args.file):
+        timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        backup = f"{args.file}.banc-{timestamp}"
+        shutil.copy2(args.file, backup)
+        sys.stderr.write(f"backup: {backup}\n")
+    with open(args.file, "wb") as file:
+        file.write(base64.b64decode(description["content"]))
+    sys.stderr.write(f"rewritten from snapshot {args.name}: {args.file}\n")
     return 0
 
 
 def main():
-    ici = os.path.dirname(os.path.abspath(__file__))
+    here = os.path.dirname(os.path.abspath(__file__))
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
-        "--dossier",
-        default=os.path.join(ici, "..", "p1", "photos"),
-        help="dossier des photos",
+        "--dir",
+        default=os.path.join(here, "..", "p1", "snapshots"),
+        help="snapshot folder",
     )
-    commandes = parser.add_subparsers(dest="commande")
-    commandes.required = True
+    commands = parser.add_subparsers(dest="command")
+    commands.required = True
 
-    commande = commandes.add_parser("photo", help="photographier les préférences")
-    commande.add_argument("nom")
-    commande.set_defaults(action=photo)
+    command = commands.add_parser("snapshot", help="capture the preferences")
+    command.add_argument("name")
+    command.set_defaults(action=snapshot)
 
-    commande = commandes.add_parser("ecarts", help="comparer deux photos")
-    commande.add_argument("avant")
-    commande.add_argument("apres")
-    commande.set_defaults(action=ecarts)
+    command = commands.add_parser("diff", help="compare two snapshots")
+    command.add_argument("before")
+    command.add_argument("after")
+    command.set_defaults(action=diff)
 
-    commande = commandes.add_parser("remettre", help="réécrire un fichier depuis une photo")
-    commande.add_argument("nom")
-    commande.add_argument("fichier")
-    commande.set_defaults(action=remettre)
+    command = commands.add_parser("restore", help="rewrite a file from a snapshot")
+    command.add_argument("name")
+    command.add_argument("file")
+    command.set_defaults(action=restore)
 
     args = parser.parse_args()
     return args.action(args)

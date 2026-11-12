@@ -1,17 +1,17 @@
-//! Options de la ligne de commande.
+//! Command-line options.
 
 use std::path::PathBuf;
 
 pub const HELP: &str = "\
-banc-server : serveur de Banc
+banc-server: Banc server
 
-Usage : banc-server --config <fichier> [options]
+Usage: banc-server --config <file> [options]
 
-Options :
-  --config <fichier>  fichier de configuration TOML (obligatoire)
-  --stderr            recopie les journaux sur la sortie d'erreur
-  --version           affiche la version
-  --help              affiche cette aide
+Options:
+  --config <file>  TOML configuration file (required)
+  --stderr         also copy the logs to standard error
+  --version        print the version
+  --help           print this help
 ";
 
 #[derive(Debug, PartialEq, Eq)]
@@ -41,7 +41,7 @@ pub fn parse(mut parser: lexopt::Parser) -> Result<Command, lexopt::Error> {
             _ => return Err(arg.unexpected()),
         }
     }
-    let config = config.ok_or("l'option --config <fichier> est obligatoire")?;
+    let config = config.ok_or("the --config <file> option is required")?;
     Ok(Command::Run(Options { config, stderr }))
 }
 
@@ -54,14 +54,14 @@ mod tests {
     }
 
     #[test]
-    fn configuration_obligatoire() {
+    fn config_required() {
         assert!(parse_args(&[]).is_err());
         assert!(parse_args(&["--stderr"]).is_err());
         assert!(parse_args(&["--config"]).is_err());
     }
 
     #[test]
-    fn configuration_et_sortie_d_erreur() {
+    fn config_and_stderr() {
         let command = parse_args(&["--config", "/etc/banc/banc-server.toml", "--stderr"]).unwrap();
         let expected = Options {
             config: PathBuf::from("/etc/banc/banc-server.toml"),
@@ -71,14 +71,14 @@ mod tests {
     }
 
     #[test]
-    fn version_et_aide_sans_configuration() {
+    fn version_and_help_without_config() {
         assert_eq!(parse_args(&["--version"]).unwrap(), Command::Version);
         assert_eq!(parse_args(&["--help"]).unwrap(), Command::Help);
     }
 
     #[test]
-    fn option_inconnue_refusee() {
-        assert!(parse_args(&["--config", "c.toml", "--inconnue"]).is_err());
+    fn unknown_option_refused() {
+        assert!(parse_args(&["--config", "c.toml", "--unknown"]).is_err());
         assert!(parse_args(&["c.toml"]).is_err());
     }
 }

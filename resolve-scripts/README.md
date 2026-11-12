@@ -1,11 +1,11 @@
-# Scripts Python du pont Resolve
+# Python scripts for the Resolve bridge
 
-Ces scripts sont embarqués dans `banc-session` et lancés par lui seul, quand il faut parler à DaVinci Resolve. Ils arrivent en phase 4. Les règles :
+These scripts are embedded in `banc-session` and run by it alone, when it needs to talk to DaVinci Resolve. They arrive in phase 4. The rules:
 
-- Un script lit ses arguments sur la ligne de commande et écrit un seul objet JSON sur la sortie standard. Les erreurs vont sur la sortie d'erreur, avec un code de sortie non nul.
-- Bibliothèque standard uniquement, plus le module `DaVinciResolveScript` fourni par Resolve.
-- La syntaxe reste compatible avec la plus ancienne version de Python que Resolve accepte. Tant que le prototype P10 n'a pas de réponse dans `docs/prototypes.md`, c'est Python 3.7 (`ruff.toml`).
+- A script reads its arguments from the command line and writes a single JSON object to standard output. Errors go to standard error, with a non-zero exit code.
+- Standard library only, plus the `DaVinciResolveScript` module provided by Resolve.
+- The syntax stays compatible with the oldest Python version Resolve accepts. Until prototype P10 has an answer in `docs/prototypes.md`, that is Python 3.7 (`ruff.toml`).
 
-Contrôles (`cargo xtask check python`) : `ruff check`, `ruff format --check`, puis compilation de chaque script.
+Checks (`cargo xtask check python`): `ruff check`, `ruff format --check`, then compilation of each script.
 
-`diagnostic.py` affiche la version de Python qui l'exécute et dit si le module de script de Resolve se charge. Il sert au prototype P10 et au diagnostic d'un poste.
+`diagnostic.py` prints the Python version running it and says whether Resolve's scripting module loads. It serves prototype P10 and workstation diagnostics.

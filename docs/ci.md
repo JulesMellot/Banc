@@ -1,50 +1,50 @@
-# Intégration continue
+# Continuous integration
 
-## Les workflows
+## The workflows
 
-| Fichier | Déclencheur | Contenu |
+| File | Trigger | Content |
 |---|---|---|
-| `ci.yml` | chaque push | Les étapes de `cargo xtask check`, sur Linux, en cinq jobs |
-| `pr.yml` | chaque PR et chaque mise à jour | `ci.yml`, clippy et tests sur macOS et Windows, compilation des cinq cibles, mesure au repos |
-| `titre-pr.yml` | ouverture, mise à jour et changement de titre d'une PR | Convention du titre |
-| `nightly.yml` | chaque nuit à 2 h 17 UTC | Trois OS, cinq cibles, failles du jour, issue ouverte en cas d'échec |
-| `plateformes.yml` | appelé par `pr.yml` et `nightly.yml` | La matrice des OS et des cibles |
+| `ci.yml` | every push | The `cargo xtask check` steps, on Linux, in five jobs |
+| `pr.yml` | every PR and every update | `ci.yml`, clippy and tests on macOS and Windows, build of the five targets, idle measurement |
+| `pr-title.yml` | PR opened, updated or retitled | Title convention |
+| `nightly.yml` | every night at 2:17 UTC | Three OSes, five targets, the day's advisories, issue opened on failure |
+| `platforms.yml` | called by `pr.yml` and `nightly.yml` | The OS and target matrix |
 
-Les jobs appellent `cargo xtask check <étape>`. Un contrôle se modifie dans `crates/xtask`, pas dans le YAML.
+The jobs call `cargo xtask check <step>`. A check is changed in `crates/xtask`, not in the YAML.
 
-Sur une PR, Linux est déjà couvert par `ci.yml`. La matrice de `pr.yml` ne relance donc que macOS et Windows, qui coûtent plus cher à la minute. La nuit, les trois OS tournent.
+On a PR, Linux is already covered by `ci.yml`. The `pr.yml` matrix therefore only reruns macOS and Windows, which cost more per minute. At night, all three OSes run.
 
-Le titre a son propre fichier parce qu'un titre corrigé relancerait sinon la matrice complète.
+The title has its own file because otherwise a corrected title would rerun the full matrix.
 
-## Réglages GitHub à poser une fois
+## GitHub settings to apply once
 
-Ces réglages vivent dans GitHub, pas dans le dépôt. Aucun outil de cette phase ne peut les poser à ta place.
+These settings live in GitHub, not in the repository. No tool from this phase can apply them for you.
 
-1. **Protection de `main`.** Dans Settings, Rules, Rulesets, choisis « Import a ruleset » et donne `.github/rulesets/main.json`. Le fichier interdit le push direct, le force push et la suppression. Il exige une PR à jour avec `main`, fusionnée en squash, avec les contrôles `PR prête` et `Titre de la PR` au vert.
-2. **Fusion en squash.** Dans Settings, General, Pull Requests, ne garde que « Allow squash merging » et choisis « Pull request title » comme message par défaut.
-3. **Dependabot.** Dans Settings, Advanced Security, active « Dependabot alerts » et « Dependabot version updates ».
+1. **Protection of `main`.** In Settings, Rules, Rulesets, choose "Import a ruleset" and give it `.github/rulesets/main.json`. The file forbids direct pushes, force pushes and deletion. It requires a PR up to date with `main`, squash-merged, with the `PR ready` and `PR title` checks green. If an older version of the ruleset is already imported (with the `PR prête` and `Titre de la PR` checks), edit it or import this one again: otherwise no PR can be merged, because those checks no longer exist.
+2. **Squash merge.** In Settings, General, Pull Requests, keep only "Allow squash merging" and choose "Pull request title" as the default message.
+3. **Dependabot.** In Settings, Advanced Security, enable "Dependabot alerts" and "Dependabot version updates".
 
-Sur un dépôt privé, GitHub n'applique les rulesets qu'à partir de l'offre Pro ou Team. Avec un compte gratuit, la protection s'importe mais ne bloque rien. Vérifie en essayant un push direct sur `main` après l'import.
+On a private repository, GitHub only enforces rulesets from the Pro or Team plan upwards. With a free account, the protection imports but blocks nothing. Check by trying a direct push to `main` after the import.
 
-GitHub n'affiche un contrôle dans la liste des contrôles exigés qu'après sa première exécution. Ouvre une PR avant de vérifier que les deux noms du ruleset sont reconnus.
+GitHub only lists a check among the required checks after its first run. Open a PR before checking that both names in the ruleset are recognized.
 
-## Critères d'acceptation de la phase 0
+## Phase 0 acceptance criteria
 
-| Critère | Où il se vérifie |
+| Criterion | Where it is checked |
 |---|---|
-| Les trois binaires se compilent pour toutes les cibles | Job « Compilation » de `pr.yml`, cinq cibles |
-| Une PR avec une erreur de format, un avertissement clippy, un test cassé ou un commit mal nommé est refusée | `ci.yml` échoue, donc `PR prête` échoue |
-| On ne peut pas pousser directement sur `main` | Ruleset importé, à tester à la main |
+| The three binaries build for every target | "Build" job of `pr.yml`, five targets |
+| A PR with a formatting error, a clippy warning, a broken test or a badly named commit is refused | `ci.yml` fails, so `PR ready` fails |
+| Pushing directly to `main` is impossible | Imported ruleset, to be tested by hand |
 
-## Ce qui reste à brancher
+## What remains to be wired up
 
-Le plan demande ces contrôles, mais ils n'ont rien à tester avant que le produit existe.
+The plan asks for these checks, but they have nothing to test before the product exists.
 
-- **Tests de bout en bout** dans `pr.yml`, avec un serveur, un dépôt et deux agents dans des conteneurs. Le premier scénario, l'enrôlement, arrive en phase 1. Le job s'ajoute à la liste `needs` de `PR prête`.
-- **Mesure au repos de l'assistant de session.** `idle-bench` ne mesure que l'agent, parce que l'assistant s'arrête tout de suite en phase 0. À étendre en phase 1.
-- **Tests longs** dans `nightly.yml`, en phase 3.
-- **`release.yml`**, en phase 7.
+- **End-to-end tests** in `pr.yml`, with a server, a depot and two agents in containers. The first scenario, enrollment, arrives in phase 1. The job is added to the `needs` list of `PR ready`.
+- **Idle measurement of the session helper.** `idle-bench` only measures the agent, because the session helper exits immediately in phase 0. To be extended in phase 1.
+- **Long tests** in `nightly.yml`, in phase 3.
+- **`release.yml`**, in phase 7.
 
-## Coût
+## Cost
 
-Les minutes macOS et Windows sont facturées plus cher que les minutes Linux sur un dépôt privé. Vérifie les tarifs en vigueur. Si la facture monte, le premier levier est de retirer la cible `x86_64-apple-darwin` de `pr.yml` et de la garder la nuit.
+macOS and Windows minutes are billed at a higher rate than Linux minutes on a private repository. Check current pricing. If the bill goes up, the first lever is to remove the `x86_64-apple-darwin` target from `pr.yml` and keep it for the nightly run.

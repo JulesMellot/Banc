@@ -1,6 +1,6 @@
-//! `cargo xtask dist` : binaires en mode release, rangés par cible.
+//! `cargo xtask dist`: release binaries, sorted by target.
 //!
-//! Les installeurs s'ajoutent ici en phase 7.
+//! Installers are added here in phase 7.
 
 use std::path::Path;
 
@@ -20,12 +20,12 @@ pub fn dist(root: &Path, targets: &[String]) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// La cible de la machine courante, lue dans `rustc -vV`.
+/// The current machine's target, read from `rustc -vV`.
 fn host_target() -> anyhow::Result<String> {
     let version = output(tool("rustc").arg("-vV"))?;
     parse_host(&version)
         .map(str::to_owned)
-        .context("cible de la machine absente de `rustc -vV`")
+        .context("host target missing from `rustc -vV`")
 }
 
 fn parse_host(rustc_version: &str) -> Option<&str> {
@@ -48,7 +48,7 @@ fn build(root: &Path, target: &str, cross: bool) -> anyhow::Result<()> {
     run(command.current_dir(root))?;
 
     let dist = root.join("dist").join(target);
-    std::fs::create_dir_all(&dist).with_context(|| format!("création de {}", dist.display()))?;
+    std::fs::create_dir_all(&dist).with_context(|| format!("creating {}", dist.display()))?;
     let suffix = if target.contains("windows") {
         ".exe"
     } else {
@@ -58,9 +58,9 @@ fn build(root: &Path, target: &str, cross: bool) -> anyhow::Result<()> {
         let file = format!("{binary}{suffix}");
         let from = built.join(&file);
         std::fs::copy(&from, dist.join(&file))
-            .with_context(|| format!("copie de {}", from.display()))?;
+            .with_context(|| format!("copying {}", from.display()))?;
     }
-    say(&format!("binaires dans {}", dist.display()));
+    say(&format!("binaries in {}", dist.display()));
     Ok(())
 }
 
@@ -69,7 +69,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn cible_de_la_machine() {
+    fn machine_target() {
         let version = "rustc 1.97.0\nbinary: rustc\nhost: aarch64-apple-darwin\nrelease: 1.97.0\n";
         assert_eq!(parse_host(version), Some("aarch64-apple-darwin"));
         assert_eq!(parse_host("rustc 1.97.0\n"), None);

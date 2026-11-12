@@ -1,7 +1,7 @@
-# Mêmes règles que les scripts embarqués.
+# Same rules as the embedded scripts.
 extend = "../../../resolve-scripts/ruff.toml"
 
 [lint]
-# Les prototypes lancent des outils du système (ffmpeg, pgrep, tasklist)
-# avec des arguments écrits dans le script, jamais reçus de l'extérieur.
+# The prototypes run system tools (ffmpeg, pgrep, tasklist) with arguments
+# written in the script, never received from outside.
 extend-ignore = ["S603", "S607"]

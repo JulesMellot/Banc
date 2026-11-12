@@ -1,8 +1,8 @@
-//! Tout le code de Banc qui dépend de l'OS.
+//! All of Banc's OS-dependent code.
 //!
-//! Règle du dépôt : aucun `cfg` d'OS en dehors de cette crate
-//! (`cargo xtask check architecture` le vérifie). Chaque module regroupe ses
-//! variantes par OS dans des sous-modules `linux`, `macos`, `windows`.
+//! Repository rule: no OS `cfg` outside this crate
+//! (`cargo xtask check architecture` checks it). Each module groups its
+//! per-OS variants in `linux`, `macos` and `windows` submodules.
 
 pub mod logging;
 pub mod paths;

@@ -1,6 +1,6 @@
-//! Serveur de Banc : API, admin, relais iroh, cache, file de rendu.
+//! Banc server: API, admin, iroh relay, cache, render queue.
 //!
-//! Phase 0 : configuration TOML, journaux et base SQLite avec ses migrations.
+//! Phase 0: TOML configuration, logs and SQLite database with its migrations.
 
 pub mod config;
 pub mod db;

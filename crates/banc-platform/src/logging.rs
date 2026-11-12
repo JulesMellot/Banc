@@ -1,7 +1,7 @@
-//! Journaux sur disque avec rotation quotidienne.
+//! On-disk logs with daily rotation.
 //!
-//! Un fichier par jour, `<nom>.<AAAA-MM-JJ>.log`, et suppression des plus
-//! anciens au-delà de `keep_files`. L'écriture se fait hors du fil appelant.
+//! One file per day, `<name>.<YYYY-MM-DD>.log`, and the oldest are deleted
+//! beyond `keep_files`. Writing happens off the calling thread.
 
 use std::path::PathBuf;
 
@@ -12,26 +12,26 @@ use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::{fmt, Layer, Registry};
 
-/// Lignes en attente d'écriture gardées en mémoire.
+/// Lines waiting to be written, kept in memory.
 const BUFFERED_LINES: usize = 1024;
 
-/// Réglages des journaux d'un binaire.
+/// Log settings for a binary.
 #[derive(Debug, Clone)]
 pub struct LogConfig {
-    /// Dossier des fichiers, créé s'il n'existe pas.
+    /// Folder for the files, created if it does not exist.
     pub dir: PathBuf,
-    /// Préfixe des fichiers, en pratique le nom du binaire.
+    /// File name prefix, in practice the binary's name.
     pub name: String,
-    /// Niveau le plus bavard qui est gardé.
+    /// Most verbose level that is kept.
     pub level: Level,
-    /// Nombre de fichiers quotidiens gardés.
+    /// Number of daily files kept.
     pub keep_files: usize,
-    /// Écrit aussi sur la sortie d'erreur, pour le développement.
+    /// Also writes to standard error, for development.
     pub stderr: bool,
 }
 
 impl LogConfig {
-    /// Niveau `info`, 14 jours gardés, pas de sortie d'erreur.
+    /// `info` level, 14 days kept, no standard error output.
     pub fn new(dir: impl Into<PathBuf>, name: impl Into<String>) -> Self {
         Self {
             dir: dir.into(),
@@ -45,31 +45,31 @@ impl LogConfig {
 
 #[derive(Debug, thiserror::Error)]
 pub enum LogError {
-    #[error("impossible de créer le dossier des journaux {dir}")]
+    #[error("cannot create the log folder {dir}")]
     CreateDir {
         dir: PathBuf,
         #[source]
         source: std::io::Error,
     },
-    #[error("impossible d'ouvrir le journal dans {dir}")]
+    #[error("cannot open the log in {dir}")]
     Open {
         dir: PathBuf,
         #[source]
         source: tracing_appender::rolling::InitError,
     },
-    #[error("les journaux sont déjà initialisés dans ce processus")]
+    #[error("logs are already initialized in this process")]
     AlreadyInitialized,
 }
 
-/// À garder en vie jusqu'à la fin du processus : sa destruction vide le tampon
-/// d'écriture sur le disque.
-#[must_use = "les dernières lignes sont perdues si le garde est détruit trop tôt"]
+/// Keep alive until the process ends: dropping it flushes the write buffer
+/// to disk.
+#[must_use = "the last lines are lost if the guard is dropped too early"]
 #[derive(Debug)]
 pub struct LogGuard {
     _worker: WorkerGuard,
 }
 
-/// Installe les journaux pour tout le processus.
+/// Installs the logs for the whole process.
 pub fn init(config: &LogConfig) -> Result<LogGuard, LogError> {
     let (subscriber, guard) = build(config)?;
     tracing::subscriber::set_global_default(subscriber)
@@ -77,7 +77,7 @@ pub fn init(config: &LogConfig) -> Result<LogGuard, LogError> {
     Ok(guard)
 }
 
-/// Construit le collecteur sans l'installer.
+/// Builds the subscriber without installing it.
 pub fn build(
     config: &LogConfig,
 ) -> Result<(Box<dyn Subscriber + Send + Sync>, LogGuard), LogError> {
@@ -95,9 +95,9 @@ pub fn build(
             dir: config.dir.clone(),
             source,
         })?;
-    // La file est allouée d'avance : la taille par défaut (128 000 lignes)
-    // coûte 4 Mo de mémoire au repos. Au-delà, les lignes sont perdues
-    // plutôt que de bloquer l'appelant.
+    // The queue is preallocated: the default size (128,000 lines) costs
+    // 4 MB of memory at rest. Beyond the limit, lines are dropped rather
+    // than blocking the caller.
     let (writer, worker) = NonBlockingBuilder::default()
         .buffered_lines_limit(BUFFERED_LINES)
         .finish(appender);
@@ -133,15 +133,15 @@ mod tests {
     }
 
     #[test]
-    fn ecrit_dans_un_fichier_date_et_filtre_par_niveau() {
+    fn writes_to_a_dated_file_filtered_by_level() {
         let tmp = tempfile::tempdir().unwrap();
-        let dir = tmp.path().join("journaux");
+        let dir = tmp.path().join("logs");
         let config = LogConfig::new(&dir, "banc-test");
 
         let (subscriber, guard) = build(&config).unwrap();
         tracing::subscriber::with_default(subscriber, || {
-            tracing::info!(poste = "mac-01", "ligne gardée");
-            tracing::debug!("ligne ignorée");
+            tracing::info!(station = "mac-01", "kept line");
+            tracing::debug!("ignored line");
         });
         drop(guard);
 
@@ -149,38 +149,38 @@ mod tests {
         assert_eq!(names.len(), 1, "{names:?}");
         assert!(names[0].starts_with("banc-test."), "{names:?}");
         assert!(names[0].ends_with(".log"), "{names:?}");
-        assert!(content.contains("ligne gardée"), "{content}");
+        assert!(content.contains("kept line"), "{content}");
         assert!(content.contains("mac-01"), "{content}");
-        assert!(!content.contains("ligne ignorée"), "{content}");
+        assert!(!content.contains("ignored line"), "{content}");
     }
 
     #[test]
-    fn supprime_les_fichiers_les_plus_anciens() {
+    fn deletes_the_oldest_files() {
         let tmp = tempfile::tempdir().unwrap();
         for day in ["2020-01-01", "2020-01-02", "2020-01-03"] {
-            std::fs::write(tmp.path().join(format!("banc-test.{day}.log")), "ancien\n").unwrap();
+            std::fs::write(tmp.path().join(format!("banc-test.{day}.log")), "old\n").unwrap();
         }
         let mut config = LogConfig::new(tmp.path(), "banc-test");
         config.keep_files = 2;
 
         let (subscriber, guard) = build(&config).unwrap();
-        tracing::subscriber::with_default(subscriber, || tracing::info!("nouveau"));
+        tracing::subscriber::with_default(subscriber, || tracing::info!("new"));
         drop(guard);
 
-        // La rotation trie par date de création du fichier : on vérifie le
-        // nombre gardé et la présence du fichier du jour, pas l'ancien retenu.
+        // Rotation sorts by file creation date: check the number kept and
+        // the presence of today's file, not which old one was retained.
         let (names, content) = read_logs(tmp.path());
         assert_eq!(names.len(), 2, "{names:?}");
-        assert!(content.contains("nouveau"), "{content}");
+        assert!(content.contains("new"), "{content}");
     }
 
     #[test]
-    fn dossier_impossible_a_creer() {
+    fn folder_cannot_be_created() {
         let tmp = tempfile::tempdir().unwrap();
-        let file = tmp.path().join("fichier");
+        let file = tmp.path().join("file");
         std::fs::write(&file, "").unwrap();
 
-        let result = build(&LogConfig::new(file.join("journaux"), "banc-test"));
+        let result = build(&LogConfig::new(file.join("logs"), "banc-test"));
         assert!(matches!(result, Err(LogError::CreateDir { .. })));
     }
 }

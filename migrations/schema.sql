@@ -1,2 +1,2 @@
--- Schéma obtenu après toutes les migrations.
--- Écrit par `cargo xtask schema`, ne pas modifier à la main.
+-- Schema obtained after all migrations.
+-- Written by `cargo xtask schema`, do not edit by hand.

@@ -1,5 +1,5 @@
-# La version de Python acceptée par Resolve n'est pas encore connue
-# (prototype P10). On vise la plus ancienne que ruff sait contrôler.
+# The Python version accepted by Resolve is not known yet (prototype P10).
+# Target the oldest one ruff can check.
 target-version = "py37"
 line-length = 100
 

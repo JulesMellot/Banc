@@ -1,7 +1,7 @@
-//! Assistant de session de Banc : icône de la barre système et pont Resolve.
+//! Banc session helper: system tray icon and Resolve bridge.
 //!
-//! Phase 0 : l'assistant ouvre ses journaux et s'arrête. L'icône et sa boucle
-//! d'événements (`tray-icon` + `tao`) arrivent en phase 1.
+//! Phase 0: the helper opens its logs and exits. The icon and its event loop
+//! (`tray-icon` + `tao`) arrive in phase 1.
 
 mod args;
 
@@ -18,18 +18,18 @@ fn main() -> ExitCode {
     match run() {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            // Les journaux ne sont pas forcément ouverts : l'erreur va aussi
-            // sur la sortie d'erreur, lue par le gestionnaire de services.
-            tracing::error!("arrêt sur erreur : {error:#}");
-            let _ = writeln!(std::io::stderr(), "{NAME} : {error:#}");
+            // The logs are not necessarily open: the error also goes to
+            // standard error, which the service manager reads.
+            tracing::error!("stopped on error: {error:#}");
+            let _ = writeln!(std::io::stderr(), "{NAME}: {error:#}");
             ExitCode::FAILURE
         }
     }
 }
 
 fn run() -> anyhow::Result<()> {
-    // `lexopt` répète le message dans la cause de l'erreur : on ne garde
-    // que le texte.
+    // `lexopt` repeats the message in the error's cause: keep only the
+    // text.
     let command = args::parse(lexopt::Parser::from_env()).map_err(|e| anyhow::anyhow!("{e}"))?;
     let options = match command {
         args::Command::Run(options) => options,
@@ -45,8 +45,8 @@ fn run() -> anyhow::Result<()> {
     log.stderr = options.stderr;
     let _log_guard = logging::init(&log)?;
 
-    tracing::info!(version = VERSION, "assistant de session démarré");
-    tracing::info!("rien à faire avant la phase 1, arrêt");
+    tracing::info!(version = VERSION, "session helper started");
+    tracing::info!("nothing to do before phase 1, exiting");
     Ok(())
 }
 

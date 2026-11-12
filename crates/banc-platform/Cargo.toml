@@ -1,6 +1,6 @@
 [package]
 name = "banc-platform"
-description = "Tout le code spécifique à l'OS : chemins, signaux, journaux, puis services, élévation et polices."
+description = "All OS-specific code: paths, signals, logs, then services, elevation and fonts."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

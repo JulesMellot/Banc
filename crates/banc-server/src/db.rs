@@ -1,8 +1,8 @@
-//! Base SQLite du serveur et ses migrations.
+//! The server's SQLite database and its migrations.
 //!
-//! Les migrations sont les fichiers `migrations/NNNN_nom.sql` du dépôt,
-//! embarqués à la compilation et appliqués dans l'ordre à l'ouverture.
-//! `migrations/schema.sql` garde le schéma obtenu, contrôlé par
+//! The migrations are the repository's `migrations/NNNN_name.sql` files,
+//! embedded at compile time and applied in order on opening.
+//! `migrations/schema.sql` keeps the resulting schema, checked by
 //! `cargo xtask check migrations`.
 
 use std::path::{Path, PathBuf};
@@ -13,37 +13,37 @@ use rusqlite_migration::{Migrations, M};
 
 static MIGRATIONS_DIR: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/../../migrations");
 
-/// Fichier du schéma de référence, à côté des migrations.
+/// Reference schema file, next to the migrations.
 pub const SCHEMA_FILE: &str = "schema.sql";
 
 const SCHEMA_HEADER: &str = "\
--- Schéma obtenu après toutes les migrations.
--- Écrit par `cargo xtask schema`, ne pas modifier à la main.
+-- Schema obtained after all migrations.
+-- Written by `cargo xtask schema`, do not edit by hand.
 ";
 
 #[derive(Debug, thiserror::Error)]
 pub enum DbError {
-    #[error("migration mal nommée : {0} (attendu : NNNN_nom_en_minuscules.sql)")]
+    #[error("badly named migration: {0} (expected: NNNN_lowercase_name.sql)")]
     BadName(String),
-    #[error("numérotation des migrations : {found} trouvé là où {expected:04} est attendu")]
+    #[error("migration numbering: found {found} where {expected:04} is expected")]
     BadNumber { expected: u32, found: String },
-    #[error("migration {0} : le fichier n'est pas en UTF-8")]
+    #[error("migration {0}: the file is not UTF-8")]
     NotUtf8(String),
-    #[error("impossible de créer le dossier de la base {dir}")]
+    #[error("cannot create the database folder {dir}")]
     CreateDir {
         dir: PathBuf,
         #[source]
         source: std::io::Error,
     },
-    #[error("erreur SQLite")]
+    #[error("SQLite error")]
     Sqlite(#[from] rusqlite::Error),
-    #[error("migration refusée")]
+    #[error("migration refused")]
     Migration(#[from] rusqlite_migration::Error),
 }
 
-/// Trie et contrôle une liste de fichiers `(nom, contenu)` : les noms suivent
-/// `NNNN_nom.sql` et les numéros se suivent à partir de 0001, sans trou ni
-/// doublon. Renvoie les contenus dans l'ordre d'application.
+/// Sorts and checks a list of `(name, content)` files: names follow
+/// `NNNN_name.sql` and numbers follow each other from 0001, with no gap or
+/// duplicate. Returns the contents in application order.
 pub fn ordered<'a>(mut files: Vec<(&'a str, &'a str)>) -> Result<Vec<&'a str>, DbError> {
     files.sort_by_key(|(name, _)| *name);
     let mut contents = Vec::with_capacity(files.len());
@@ -60,7 +60,7 @@ pub fn ordered<'a>(mut files: Vec<(&'a str, &'a str)>) -> Result<Vec<&'a str>, D
     Ok(contents)
 }
 
-/// Numéro d'un fichier `NNNN_nom.sql`, ou `None` si le nom ne suit pas la règle.
+/// Number of a `NNNN_name.sql` file, or `None` if the name breaks the rule.
 fn migration_number(file_name: &str) -> Option<u32> {
     let stem = file_name.strip_suffix(".sql")?;
     let (digits, name) = stem.split_once('_')?;
@@ -74,8 +74,8 @@ fn migration_number(file_name: &str) -> Option<u32> {
     digits.parse().ok()
 }
 
-/// Les migrations embarquées, dans l'ordre. `None` tant que le dépôt n'en
-/// contient aucune : `rusqlite_migration` refuse une liste vide.
+/// The embedded migrations, in order. `None` while the repository has none:
+/// `rusqlite_migration` refuses an empty list.
 pub fn migrations() -> Result<Option<Migrations<'static>>, DbError> {
     let mut files = Vec::new();
     for file in MIGRATIONS_DIR.files() {
@@ -96,7 +96,7 @@ pub fn migrations() -> Result<Option<Migrations<'static>>, DbError> {
     Ok((!steps.is_empty()).then(|| Migrations::new(steps)))
 }
 
-/// Ouvre la base, en la créant au besoin, et applique les migrations manquantes.
+/// Opens the database, creating it if needed, and applies missing migrations.
 pub fn open(path: &Path) -> Result<Connection, DbError> {
     if let Some(dir) = path.parent().filter(|dir| !dir.as_os_str().is_empty()) {
         std::fs::create_dir_all(dir).map_err(|source| DbError::CreateDir {
@@ -107,7 +107,7 @@ pub fn open(path: &Path) -> Result<Connection, DbError> {
     prepare(Connection::open(path)?)
 }
 
-/// Base en mémoire avec toutes les migrations, pour les tests.
+/// In-memory database with all migrations, for tests.
 pub fn open_in_memory() -> Result<Connection, DbError> {
     prepare(Connection::open_in_memory()?)
 }
@@ -123,7 +123,7 @@ fn prepare(mut conn: Connection) -> Result<Connection, DbError> {
     Ok(conn)
 }
 
-/// Le schéma de la base, sous la forme gardée dans `migrations/schema.sql`.
+/// The database schema, in the form kept in `migrations/schema.sql`.
 pub fn schema(conn: &Connection) -> Result<String, DbError> {
     let mut statement = conn.prepare(
         "SELECT sql FROM sqlite_schema \
@@ -144,17 +144,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn noms_de_migration() {
-        assert_eq!(migration_number("0001_socle.sql"), Some(1));
+    fn migration_names() {
+        assert_eq!(migration_number("0001_base.sql"), Some(1));
         assert_eq!(migration_number("0042_blob_locations_v2.sql"), Some(42));
         for name in [
-            "1_socle.sql",
-            "00001_socle.sql",
-            "0001-socle.sql",
+            "1_base.sql",
+            "00001_base.sql",
+            "0001-base.sql",
             "0001_.sql",
-            "0001_Socle.sql",
-            "0001_socle.txt",
-            "socle.sql",
+            "0001_Base.sql",
+            "0001_base.txt",
+            "base.sql",
             "schema.sql",
         ] {
             assert_eq!(migration_number(name), None, "{name}");
@@ -162,10 +162,10 @@ mod tests {
     }
 
     #[test]
-    fn ordre_d_application() {
+    fn application_order() {
         let files = vec![
             ("0002_machines.sql", "B"),
-            ("0001_socle.sql", "A"),
+            ("0001_base.sql", "A"),
             ("0003_invites.sql", "C"),
         ];
         assert_eq!(ordered(files).unwrap(), ["A", "B", "C"]);
@@ -173,8 +173,8 @@ mod tests {
     }
 
     #[test]
-    fn trou_dans_la_numerotation() {
-        let err = ordered(vec![("0001_socle.sql", ""), ("0003_invites.sql", "")]).unwrap_err();
+    fn gap_in_numbering() {
+        let err = ordered(vec![("0001_base.sql", ""), ("0003_invites.sql", "")]).unwrap_err();
         assert!(
             matches!(&err, DbError::BadNumber { expected: 2, found } if found == "0003_invites.sql"),
             "{err:?}"
@@ -187,8 +187,8 @@ mod tests {
     }
 
     #[test]
-    fn numero_en_double() {
-        let err = ordered(vec![("0001_socle.sql", ""), ("0001_autre.sql", "")]).unwrap_err();
+    fn duplicate_number() {
+        let err = ordered(vec![("0001_base.sql", ""), ("0001_other.sql", "")]).unwrap_err();
         assert!(
             matches!(err, DbError::BadNumber { expected: 2, .. }),
             "{err:?}"
@@ -196,15 +196,15 @@ mod tests {
     }
 
     #[test]
-    fn nom_refuse() {
-        let err = ordered(vec![("socle.sql", "")]).unwrap_err();
+    fn name_refused() {
+        let err = ordered(vec![("base.sql", "")]).unwrap_err();
         assert!(matches!(err, DbError::BadName(_)), "{err:?}");
     }
 
     #[test]
-    fn ouverture_cree_le_dossier_et_reste_rejouable() {
+    fn open_creates_the_folder_and_is_repeatable() {
         let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("donnees/banc.sqlite");
+        let path = tmp.path().join("data/banc.sqlite");
 
         let conn = open(&path).unwrap();
         let mode: String = conn
@@ -221,7 +221,7 @@ mod tests {
     }
 
     #[test]
-    fn schema_trie_et_termine_par_des_points_virgules() {
+    fn schema_sorted_with_semicolons() {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(
             "CREATE TABLE b (id INTEGER PRIMARY KEY, a_id INTEGER);

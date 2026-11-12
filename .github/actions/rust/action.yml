@@ -1,16 +1,16 @@
 name: Rust
-description: Installe la chaîne Rust de rust-toolchain.toml et restaure le cache de compilation.
+description: Installs the Rust toolchain from rust-toolchain.toml and restores the build cache.
 inputs:
   targets:
-    description: Cibles supplémentaires, séparées par des espaces.
+    description: Extra targets, separated by spaces.
     default: ''
   cache-key:
-    description: Clé qui distingue les caches de jobs différents.
+    description: Key that tells apart the caches of different jobs.
     default: ''
 runs:
   using: composite
   steps:
-    - name: Installer la chaîne Rust
+    - name: Install the Rust toolchain
       shell: bash
       env:
         TARGETS: ${{ inputs.targets }}

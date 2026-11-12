@@ -1,116 +1,116 @@
-# Plan de construction de Banc
+# Banc build plan
 
-Ce document sert de cahier des charges à Claude Code. Chaque phase livre quelque chose d'utilisable et se termine par des critères d'acceptation. On ne commence pas une phase tant que la précédente ne passe pas.
+This document is the specification for Claude Code. Each phase delivers something usable and ends with acceptance criteria. A phase does not start until the previous one passes.
 
-Contexte : Banc est un outil interne, pour les monteurs et étalonneurs salariés d'une société, sur des machines de la société. Toutes les machines ont DaVinci Resolve Studio.
+Context: Banc is an internal tool for a company's salaried editors and colorists, on company machines. Every machine has DaVinci Resolve Studio.
 
-## 1. Le produit en une page
+## 1. The product on one page
 
-### Ce que vit l'utilisateur
+### What the user experiences
 
-1. L'admin crée une invitation. Il obtient un lien `banc://join?u=https://banc.masociete.fr&k=XXXX&a=EMPREINTE` et une clé à copier.
-2. Le monteur installe Banc et clique sur le lien (ou colle l'URL et la clé). Banc demande une fois le mot de passe administrateur du poste, et sur Mac les autorisations d'accès aux fichiers.
-3. Banc vérifie le poste : version de Resolve, plugins, polices, LUT, DCTL, templates Fusion, presets, volume Banc, bibliothèque de projets partagée. Il répare seul ce qu'il peut.
-4. Le monteur voit la liste des projets. Il en ouvre un. Banc récupère ce qu'il faut, puis ouvre Resolve dessus.
-5. Ensuite il travaille dans Resolve comme d'habitude. Tout ce qu'il ajoute au projet (rushes, musique glissée dans la timeline, graphismes, rendus) devient accessible aux autres sans qu'il y pense.
+1. The admin creates an invitation. They get a link `banc://join?u=https://banc.mycompany.com&k=XXXX&a=FINGERPRINT` and a key to copy.
+2. The editor installs Banc and clicks the link (or pastes the URL and the key). Banc asks once for the workstation's administrator password and, on a Mac, for file access permissions.
+3. Banc checks the workstation: Resolve version, plugins, fonts, LUTs, DCTLs, Fusion templates, presets, Banc volume, shared project library. It fixes on its own whatever it can.
+4. The editor sees the list of projects and opens one. Banc fetches what is needed, then opens Resolve on it.
+5. From then on they work in Resolve as usual. Everything they add to the project (rushes, music dragged into the timeline, graphics, renders) becomes available to the others without them thinking about it.
 
-### Principe central
+### Core principle
 
-Un projet Banc est fait pour être partagé. Tout ce qui entre dans un projet est publié, quelle que soit la façon dont c'est entré. Banc s'adapte à la façon dont les gens travaillent dans Resolve et rattrape derrière eux.
+A Banc project is meant to be shared. Everything that enters a project is published, however it got there. Banc adapts to the way people work in Resolve and catches up behind them.
 
-### Les rôles
+### Roles
 
-- **Poste** : monteur ou étalonneur.
-- **Dépôt** : le NAS. Garde une copie de tout ce qui est publié. Docker ou binaire Linux, sans interface.
-- **Rendu** (optionnel) : machine dédiée aux rendus. Le produit fonctionne sans.
-- **Serveur** : sur le VPS. API, admin web, relais iroh, cache de fichiers, coordination, PostgreSQL de la collaboration.
+- **Workstation**: editor or colorist.
+- **Depot**: the NAS. Keeps a copy of everything that is published. Docker or Linux binary, no interface.
+- **Render** (optional): a machine dedicated to renders. The product works without it.
+- **Server**: on the VPS. API, web admin, iroh relay, file cache, coordination, PostgreSQL for collaboration.
 
-Un utilisateur a aussi un rôle de personne : admin, monteur, étalonneur. Il règle ce qu'il peut faire et ce que son poste télécharge.
+A user also has a person role: admin, editor, colorist. It sets what they can do and what their workstation downloads.
 
-### Ce que Banc ne fait pas (volontairement)
+### What Banc does not do (on purpose)
 
-- Aucune activité quand Resolve est fermé, hors action demandée par l'utilisateur et transferts en cours.
-- Pas de disque virtuel avec pilote. Un vrai volume local au même chemin partout.
-- Pas d'activation de licences de plugins. Banc installe, vérifie la présence, et signale.
-- Pas de suppression automatique de fichiers publiés.
+- No activity while Resolve is closed, apart from actions the user asked for and transfers in progress.
+- No virtual disk with a driver. A real local volume, at the same path everywhere.
+- No plugin license activation. Banc installs, checks presence, and reports.
+- No automatic deletion of published files.
 
 ## 2. Architecture
 
 ```
-                    VPS (seul point exposé, port 443)
+                    VPS (only exposed point, port 443)
           ┌──────────────────────────────────────────────┐
           │ banc-server                                  │
-          │   API HTTPS, admin web, coordination         │
-          │   relais iroh                                │
-          │   cache de fichiers (quota + expiration)     │
-          │   arrivée des tunnels PostgreSQL             │
-          │ PostgreSQL 18 (écoute 127.0.0.1 uniquement)  │
-          │ sauvegardes SQLite + PostgreSQL -> dépôt     │
+          │   HTTPS API, web admin, coordination         │
+          │   iroh relay                                 │
+          │   file cache (quota + expiry)                │
+          │   PostgreSQL tunnel endpoint                 │
+          │ PostgreSQL 18 (listens on 127.0.0.1 only)    │
+          │ SQLite + PostgreSQL backups -> depot         │
           └──────────────────────┬───────────────────────┘
-                                 │ connexions sortantes, iroh (QUIC)
+                                 │ outbound connections, iroh (QUIC)
       ┌──────────────┬───────────┼──────────────┬─────────────────┐
 ┌─────┴─────┐ ┌──────┴────┐ ┌────┴──────┐ ┌─────┴───────┐  ┌──────┴──────┐
-│ poste Mac │ │ poste Win │ │ poste Lin │ │ rendu       │  │ dépôt NAS   │
-│           │ │           │ │           │ │ (optionnel) │  │             │
+│ Mac       │ │ Windows   │ │ Linux     │ │ render      │  │ NAS depot   │
+│ station   │ │ station   │ │ station   │ │ (optional)  │  │             │
 └───────────┘ └───────────┘ └───────────┘ └─────────────┘  └─────────────┘
-   Les machines se parlent en direct dès que possible (même LAN ou
-   traversée de NAT réussie), sinon via le relais du VPS.
+   Machines talk to each other directly whenever possible (same LAN or
+   successful NAT traversal), otherwise through the VPS relay.
 ```
 
 ### Transport
 
-iroh 1.x relie deux machines identifiées par leur clé publique, en direct ou par relais, sans VPN. Les fichiers sont identifiés par leur empreinte BLAKE3 et vérifiés pendant le transfert.
+iroh 1.x connects two machines identified by their public key, directly or through a relay, without a VPN. Files are identified by their BLAKE3 hash and verified during the transfer.
 
-### Exposition du VPS
+### VPS exposure
 
-- Un nom de domaine, le port 443, certificat Let's Encrypt obtenu par le serveur.
-- L'API HTTPS et le relais iroh partagent le port 443.
-- PostgreSQL n'écoute que sur `127.0.0.1`.
+- One domain name, port 443, a Let's Encrypt certificate obtained by the server.
+- The HTTPS API and the iroh relay share port 443.
+- PostgreSQL listens on `127.0.0.1` only.
 
-Si le VPS est en panne, la coordination et la collaboration s'arrêtent. C'est accepté. Le mode réservation continue de fonctionner sur les fichiers déjà présents, et les publications partent au retour du serveur.
+If the VPS is down, coordination and collaboration stop. That is accepted. Reservation mode keeps working on the files already present, and publications go out when the server comes back.
 
-### Réseau local
+### Local network
 
-Les agents d'un même LAN se trouvent par la découverte locale d'iroh et s'échangent les fichiers sans passer par Internet.
+Agents on the same LAN find each other through iroh's local discovery and exchange files without going through the Internet.
 
-### Identité et sécurité
+### Identity and security
 
-- Chaque machine a une clé Ed25519, qui est son identifiant iroh. La clé privée reste dans le trousseau de l'OS.
-- Invitation : jeton de 32 octets, usage unique, 7 jours, porte le rôle.
-- Une machine n'accepte de connexion iroh que des clés publiques déclarées pour l'équipe. Révoquer une machine la retire de la liste et coupe ses tunnels.
-- Comptes admin : argon2id, TOTP optionnel.
-- Le mot de passe PostgreSQL est généré à l'installation. Le couple par défaut de Resolve (`postgres` / `DaVinci`) n'est jamais utilisé.
+- Each machine has an Ed25519 key, which is its iroh identifier. The private key stays in the OS keychain.
+- Invitation: 32-byte token, single use, valid 7 days, carries the role.
+- A machine only accepts iroh connections from public keys declared for the team. Revoking a machine removes it from the list and cuts its tunnels.
+- Admin accounts: argon2id, optional TOTP.
+- The PostgreSQL password is generated at install time. Resolve's default pair (`postgres` / `DaVinci`) is never used.
 
-### Le VPS ne peut rien faire exécuter aux postes
+### The VPS cannot make workstations run anything
 
-L'agent tourne avec les droits admin et installe des logiciels. Un VPS piraté ne doit pas pouvoir en profiter.
+The agent runs with admin rights and installs software. A compromised VPS must not be able to take advantage of that.
 
-- **Clé admin.** À la première configuration, l'application Banc de l'admin génère une paire Ed25519. La clé privée reste dans le trousseau de son poste. Banc lui fait noter une phrase de récupération sur papier. La clé privée n'est jamais envoyée au VPS.
-- **Manifeste signé.** Le manifeste (version de Resolve, paquets avec leur empreinte et leur commande d'installation, réglages imposés) est signé par la clé admin. La publication d'un manifeste se fait depuis l'application Banc de l'admin, pas depuis le navigateur.
-- **Empreinte dans l'invitation.** Le lien d'invitation contient l'empreinte de la clé publique admin (`a=`). Le poste l'enregistre à l'enrôlement. Il refuse ensuite tout manifeste dont la signature ne correspond pas, et tout paquet dont l'empreinte n'est pas dans un manifeste signé.
-- **Mises à jour de Banc.** Signées par une clé de publication gardée hors du VPS (poste du développeur ou secret de CI). L'agent refuse un binaire non signé.
-- Ce que le VPS contrôle sans signature : les listes de fichiers des projets et les droits d'accès. Ce sont des données, jamais du code exécuté.
-- Changer de clé admin demande une action sur chaque poste (nouvelle invitation). C'est voulu.
+- **Admin key.** On first setup, the admin's Banc application generates an Ed25519 key pair. The private key stays in the keychain of their workstation. Banc has them write down a recovery phrase on paper. The private key is never sent to the VPS.
+- **Signed manifest.** The manifest (Resolve version, packages with their hash and install command, enforced settings) is signed with the admin key. A manifest is published from the admin's Banc application, not from the browser.
+- **Fingerprint in the invitation.** The invitation link contains the fingerprint of the admin public key (`a=`). The workstation records it at enrollment. From then on it refuses any manifest whose signature does not match, and any package whose hash is not in a signed manifest.
+- **Banc updates.** Signed with a release key kept off the VPS (the developer's machine or a CI secret). The agent refuses an unsigned binary.
+- What the VPS controls without a signature: project file lists and access rights. These are data, never executed code.
+- Changing the admin key requires an action on every workstation (a new invitation). This is intended.
 
-## 3. Modèle de données
+## 3. Data model
 
-SQLite sur le VPS :
+SQLite on the VPS:
 
-- `users` : nom, rôle de personne, droits.
-- `machines` : nom, OS, arch, rôle, clé publique, dernière connexion, version de l'agent, version de Resolve détectée, dernier rapport, latence vers le VPS.
+- `users`: name, person role, permissions.
+- `machines`: name, OS, arch, role, public key, last connection, agent version, detected Resolve version, last report, latency to the VPS.
 - `invites`
-- `manifests` : contenu, signature, version. Le dernier publié s'applique.
-- `packages`, `package_builds` : éléments installables, une variante par OS et arch.
-- `blobs` : empreinte BLAKE3, taille.
-- `blob_locations` : qui possède quel blob (machine, dépôt, cache), date de dernière vérification.
-- `projects` : nom, mode (`reservation` ou `collaboratif`), modèle, membres, état (`actif`, `archive`), verrou (mode réservation).
-- `project_files` : chemin relatif, classe (`original`, `proxy`, `media`, `export`), empreinte courante, numéro de révision, auteur, date, état (`present`, `retire`).
-- `project_file_revisions` : historique des empreintes d'un même chemin.
-- `project_versions` : `.drp` publiés (mode réservation).
-- `render_jobs` : projet, timeline, preset, machine choisie, heure prévue, statut, progression, fichier produit.
-- `events` : journal d'audit.
+- `manifests`: content, signature, version. The latest published one applies.
+- `packages`, `package_builds`: installable items, one variant per OS and arch.
+- `blobs`: BLAKE3 hash, size.
+- `blob_locations`: who holds which blob (machine, depot, cache), date of last verification.
+- `projects`: name, mode (`reservation` or `collaborative`), template, members, state (`active`, `archived`), lock (reservation mode).
+- `project_files`: relative path, class (`original`, `proxy`, `media`, `export`), current hash, revision number, author, date, state (`present`, `retired`).
+- `project_file_revisions`: hash history of a given path.
+- `project_versions`: published `.drp` files (reservation mode).
+- `render_jobs`: project, timeline, preset, chosen machine, scheduled time, status, progress, output file.
+- `events`: audit log.
 
-### Manifeste
+### Manifest
 
 ```json
 {
@@ -127,516 +127,516 @@ SQLite sur le VPS :
 }
 ```
 
-### Règles de détection d'un paquet
+### Package detection rules
 
-`file_exists`, `bundle_version` (Mac), `registry` (Windows), `ofx_bundle`, `font`, `command` (dernier recours).
+`file_exists`, `bundle_version` (Mac), `registry` (Windows), `ofx_bundle`, `font`, `command` (last resort).
 
-## 4. Le volume Banc et l'arborescence
+## 4. The Banc volume and the folder tree
 
-### Un chemin identique partout
+### The same path everywhere
 
-Resolve enregistre des chemins absolus. Banc crée un volume dédié, visible comme un disque, sans pilote ni extension noyau :
+Resolve stores absolute paths. Banc creates a dedicated volume, visible as a disk, with no driver and no kernel extension:
 
-| OS | Chemin | Comment Banc le crée |
+| OS | Path | How Banc creates it |
 |---|---|---|
-| macOS | `/Volumes/Banc` | Volume APFS ajouté au conteneur du disque choisi (`diskutil apfs addVolume`). Partage l'espace du disque, se monte seul au démarrage. |
-| Linux | `/Volumes/Banc` | Point de montage ou lien vers le dossier de stockage choisi. |
-| Windows | `B:\` | Lettre de lecteur persistante pour tout le système (`HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\DOS Devices`). Lettre réglable dans le manifeste. |
+| macOS | `/Volumes/Banc` | APFS volume added to the container of the chosen disk (`diskutil apfs addVolume`). Shares the disk's space, mounts by itself at startup. |
+| Linux | `/Volumes/Banc` | Mount point or link to the chosen storage folder. |
+| Windows | `B:\` | System-wide persistent drive letter (`HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\DOS Devices`). The letter can be set in the manifest. |
 
-Mac et Linux partagent le même chemin. Il reste une seule correspondance, `/Volumes/Banc` avec `B:\`, parce que Resolve n'accepte qu'un Mapped Mount par emplacement. Banc l'écrit dans les préférences Media Storage de Resolve (Resolve fermé, copie de sauvegarde avant écriture).
+Mac and Linux share the same path. That leaves a single mapping, `/Volumes/Banc` to `B:\`, because Resolve only accepts one Mapped Mount per location. Banc writes it into Resolve's Media Storage preferences (Resolve closed, backup copy before writing).
 
-### Arborescence, créée et entretenue par Banc
+### Folder tree, created and maintained by Banc
 
-Personne ne crée de dossier à la main.
+Nobody creates a folder by hand.
 
 ```
-/Volumes/Banc/<projet>/          (B:\<projet>\ sur Windows)
-  Rushes/J03/CamA/A001.braw      classe original
-  Rushes/J03/CamA/Proxy/A001.mov classe proxy
-  Audio/                         classe media
-  Graphics/                      classe media
-  Media/                         classe media (vidéos ajoutées hors ingest)
-  Exports/                       classe export
-  .banc/                         métadonnées locales, jamais publié
+/Volumes/Banc/<project>/          (B:\<project>\ on Windows)
+  Rushes/D03/CamA/A001.braw      class original (D03: shoot day 3)
+  Rushes/D03/CamA/Proxy/A001.mov class proxy
+  Audio/                         class media
+  Graphics/                      class media
+  Media/                         class media (videos added outside ingest)
+  Exports/                       class export
+  .banc/                         local metadata, never published
 ```
 
-### Réglages imposés dans chaque projet Resolve
+### Settings enforced in every Resolve project
 
-Appliqués à la création par script, vérifiés à chaque ouverture, remis en place si quelqu'un les change :
+Applied by script at creation, checked at every opening, restored if someone changes them:
 
-- proxys générés dans des sous-dossiers `Proxy` à côté des originaux ;
-- destination de rendu par défaut dans `Exports/` ;
-- cache de rendu et images de galerie sur le disque local du poste, hors du volume Banc ;
-- rendus Fusion et « Render in Place » dans `Media/`.
+- proxies generated in `Proxy` subfolders next to the originals;
+- default render destination in `Exports/`;
+- render cache and gallery stills on the workstation's local disk, outside the Banc volume;
+- Fusion renders and "Render in Place" in `Media/`.
 
-## 5. Les fichiers
+## 5. Files
 
-### Quatre classes, deux comportements
+### Four classes, two behaviors
 
-| Classe | Contenu | Distribution | Modifiable |
+| Class | Content | Distribution | Mutable |
 |---|---|---|---|
-| `original` | rushes caméra | à la demande | non |
-| `proxy` | proxys | automatique | non |
-| `media` | son, graphismes, vidéos ajoutées | automatique | oui, avec révisions |
-| `export` | rendus | automatique pour l'auteur, à la demande pour les autres | non |
+| `original` | camera rushes | on demand | no |
+| `proxy` | proxies | automatic | no |
+| `media` | sound, graphics, added videos | automatic | yes, with revisions |
+| `export` | renders | automatic for the author, on demand for the others | no |
 
-- **Automatique** : dès qu'un fichier est publié, le serveur prévient les postes qui ont le projet ouvert. Ils le récupèrent tout de suite. Un poste qui ouvre le projet plus tard les récupère à l'ouverture.
-- **À la demande** : le fichier est disponible pour tout le monde mais n'est téléchargé que sur demande. Bouton principal : « Récupérer les originaux de cette timeline », qui ne prend que les rushes utilisés par la timeline courante.
-- Le rôle de personne peut changer la règle. Exemple : un étalonneur reçoit automatiquement les originaux des timelines qu'il ouvre.
+- **Automatic**: as soon as a file is published, the server notifies the workstations that have the project open. They fetch it right away. A workstation that opens the project later fetches the files on opening.
+- **On demand**: the file is available to everyone but only downloaded on request. Main button: "Fetch the originals for this timeline", which only takes the rushes used by the current timeline.
+- The person role can change the rule. Example: a colorist automatically receives the originals of the timelines they open.
 
-### Publier
+### Publishing
 
-1. L'agent calcule l'empreinte des fichiers nouveaux (taille et date comparées à son index local avant de hasher).
-2. Il envoie la liste au serveur, qui répond avec les empreintes inconnues.
-3. Le poste ne pousse rien vers le VPS. Il annonce ses fichiers, et ce sont les autres machines qui viennent les chercher chez lui en connexion directe : le dépôt d'abord, et les postes qui ont le projet ouvert en même temps.
-4. Le cache du VPS ne reçoit un fichier que dans deux cas : le dépôt n'est pas joignable en direct depuis ce poste (hors ligne, ou traversée de NAT impossible), ou l'utilisateur demande « Publier et éteindre » alors que le dépôt est trop lent à recevoir.
-5. Classe `original` : toujours en direct vers le dépôt, jamais dans le cache.
-6. Tant que le dépôt n'a pas tout confirmé, l'interface affiche ce qui reste à envoyer. Rien n'est perdu puisque le poste garde ses fichiers.
+1. The agent hashes new files (size and date compared with its local index before hashing).
+2. It sends the list to the server, which answers with the unknown hashes.
+3. The workstation pushes nothing to the VPS. It announces its files, and the other machines come and get them from it over a direct connection: the depot first, and the workstations that have the project open at the same time.
+4. The VPS cache only receives a file in two cases: the depot cannot be reached directly from this workstation (offline, or NAT traversal impossible), or the user asks for "Publish and shut down" while the depot is too slow to receive.
+5. Class `original`: always sent directly to the depot, never to the cache.
+6. Until the depot has confirmed everything, the interface shows what is left to send. Nothing is lost, since the workstation keeps its files.
 
-### Récupérer
+### Fetching
 
-Le pair-à-pair passe avant tout. Une connexion directe entre deux machines ne coûte rien au VPS. Une connexion relayée ou un téléchargement depuis le cache consomme sa bande passante.
+Peer-to-peer comes first. A direct connection between two machines costs the VPS nothing. A relayed connection or a download from the cache uses its bandwidth.
 
-Sources, par ordre de préférence :
+Sources, in order of preference:
 
-1. un poste du même LAN ;
-2. toute machine joignable en connexion directe : postes allumés et dépôt ;
-3. le cache du VPS, si le fichier s'y trouve ;
-4. une machine joignable seulement par le relais. Dans ce cas le serveur met aussi le fichier en cache au passage, pour que les suivants ne repassent pas par le relais.
+1. a workstation on the same LAN;
+2. any machine reachable over a direct connection: running workstations and the depot;
+3. the VPS cache, if the file is there;
+4. a machine reachable only through the relay. In that case the server also caches the file on the way, so that the next ones do not go through the relay again.
 
-Règles :
+Rules:
 
-- **Plusieurs sources à la fois.** Les fichiers sont répartis entre toutes les sources directes disponibles, et les gros fichiers découpés par plages. Chaque bloc est vérifié par empreinte, donc mélanger les sources est sans risque.
-- **Tout poste allumé sert les autres**, même Resolve fermé. C'est une réponse à une demande, sans scan ni surveillance, donc sans coût au repos.
-- **Limites d'envoi par poste**, pour ne pas gêner celui qui travaille : sans limite sur le LAN, plafonné à la moitié du débit montant mesuré vers l'extérieur, en pause pendant un rendu. Réglable par l'admin.
-- L'agent teste la connexion directe avant de choisir, et rebascule sur une source directe dès qu'une devient disponible en cours de transfert.
-- Quatre fichiers en parallèle, reprise après coupure.
+- **Several sources at once.** Files are spread across all available direct sources, and large files are split into ranges. Each chunk is verified by hash, so mixing sources is safe.
+- **Every running workstation serves the others**, even with Resolve closed. It answers a request, with no scan and no watching, so it costs nothing at rest.
+- **Upload limits per workstation**, so as not to disturb the person working on it: no limit on the LAN, capped at half the measured outbound upload rate, paused during a render. Adjustable by the admin.
+- The agent tests the direct connection before choosing, and switches back to a direct source as soon as one becomes available during a transfer.
+- Four files in parallel, resume after interruption.
 
-Option pour le dépôt : ouvrir un port UDP sur la box du NAS garantit des connexions directes vers lui dans presque tous les cas. C'est facultatif, le reste fonctionne sans.
+Option for the depot: opening a UDP port on the NAS's router guarantees direct connections to it in almost every case. This is optional; everything else works without it.
 
-### Fichiers modifiés (classe `media`)
+### Modified files (class `media`)
 
-Un logo retouché ou une musique remplacée gardent leur chemin mais changent de contenu.
+A retouched logo or a replaced piece of music keeps its path but changes content.
 
-- **Détection.** Pendant que Resolve est ouvert, et à chaque publication, l'agent compare taille et date des fichiers `media` à son index. Un fichier changé est rehashé et publié comme nouvelle révision du même chemin.
-- **Réception.** Les autres postes téléchargent la révision dans un fichier temporaire, puis remplacent l'ancien d'un seul geste (renommage atomique). Ensuite l'assistant demande à Resolve de recharger le clip.
-- **Fichier verrouillé.** Sur Windows, Resolve peut tenir le fichier ouvert et bloquer le remplacement. Banc réessaie à la fermeture du projet et affiche d'ici là « logo.png : nouvelle version en attente ».
-- **Conflit.** Si deux personnes modifient le même fichier sans avoir vu la révision de l'autre, la première publication garde le chemin. La seconde est enregistrée à côté sous un nom dérivé (`logo (Paul, 11-11).png`), et les deux personnes sont prévenues.
-- **Historique.** Toutes les révisions restent dans le dépôt. On peut restaurer une révision depuis Banc.
+- **Detection.** While Resolve is open, and at every publication, the agent compares the size and date of `media` files with its index. A changed file is rehashed and published as a new revision of the same path.
+- **Reception.** The other workstations download the revision to a temporary file, then replace the old one in a single step (atomic rename). Then the session helper asks Resolve to reload the clip.
+- **Locked file.** On Windows, Resolve may hold the file open and block the replacement. Banc retries when the project closes and shows "logo.png: new version pending" until then.
+- **Conflict.** If two people modify the same file without having seen each other's revision, the first publication keeps the path. The second is stored next to it under a derived name (`logo (Paul, 11-11).png`), and both people are notified.
+- **History.** All revisions stay in the depot. A revision can be restored from Banc.
 
-### Fichiers immuables (classes `original` et `proxy`)
+### Immutable files (classes `original` and `proxy`)
 
-Un fichier de ces classes ne doit jamais changer. Si son contenu diffère de l'empreinte publiée, Banc ne propage rien. Il signale une corruption possible et propose de restaurer depuis le dépôt.
+A file in these classes must never change. If its content differs from the published hash, Banc propagates nothing. It reports possible corruption and offers to restore from the depot.
 
-### Copies et sécurité des originaux
+### Copies and safety of originals
 
-- Un original est « en sécurité » quand il existe en deux copies vérifiées : le poste qui a fait l'ingest et le dépôt.
-- À ce moment, et pas avant, Banc affiche « Deux copies vérifiées, tu peux formater la carte ».
-- Banc prévient le poste d'ingest qu'il porte la seconde copie et lui demande de la garder.
-- « Libérer l'espace » est refusé pour un original tant qu'il n'existe pas ailleurs une autre copie en plus du dépôt (autre poste, machine de rendu, second dépôt).
-- L'admin voit dans le tableau de bord le nombre de copies de chaque projet.
-- Un second dépôt (autre disque ou autre lieu) peut être ajouté plus tard. Il s'enrôle comme le premier.
+- An original is "safe" when it exists in two verified copies: the workstation that did the ingest, and the depot.
+- At that point, and not before, Banc shows "Two verified copies, you can format the card".
+- Banc tells the ingest workstation that it holds the second copy and asks it to keep it.
+- "Free up space" is refused for an original as long as no other copy exists somewhere besides the depot (another workstation, the render machine, a second depot).
+- The admin sees the number of copies of each project in the dashboard.
+- A second depot (another disk or another site) can be added later. It enrolls like the first one.
 
-### Suppressions
+### Deletions
 
-- Retirer un clip du projet ou supprimer un fichier sur un poste ne supprime rien dans le dépôt. Le fichier passe à l'état `retire` et n'est plus distribué.
-- Seul l'admin supprime des blobs, à l'archivage ou à la suppression d'un projet, avec confirmation.
+- Removing a clip from the project or deleting a file on a workstation deletes nothing in the depot. The file moves to the `retired` state and is no longer distributed.
+- Only the admin deletes blobs, when archiving or deleting a project, with confirmation.
 
-### Espace disque des postes
+### Workstation disk space
 
-- Les proxys et médias d'un projet non ouvert depuis N jours (réglable, 30 par défaut) sont proposés à la libération. Banc ne libère que ce que le dépôt a confirmé.
-- Une alerte prévient quand le volume Banc d'un poste passe sous 10 % d'espace libre.
+- Proxies and media of a project not opened for N days (adjustable, 30 by default) are offered for freeing. Banc only frees what the depot has confirmed.
+- An alert warns when a workstation's Banc volume drops below 10% free space.
 
-### Cache du VPS
+### VPS cache
 
-Le cache est un secours, pas le chemin normal. Il sert quand aucune source directe n'existe : postes éteints et dépôt injoignable en direct, ou réseau qui bloque les connexions directes.
+The cache is a fallback, not the normal path. It is used when no direct source exists: workstations switched off and depot unreachable directly, or a network that blocks direct connections.
 
-- Quota réglable, sortie des fichiers les moins demandés en premier.
-- L'admin voit, par projet et par mois, la part des transferts faite en direct, par le relais et par le cache. C'est l'indicateur à surveiller pour le coût.
-- Expiration après N jours sans demande.
-- Un fichier n'est jamais supprimé du cache tant que le dépôt ne l'a pas confirmé.
-- Les fichiers des projets marqués actifs restent en cache dans la limite du quota.
-- L'admin voit l'occupation du cache et le volume sorti du VPS sur le mois.
+- Adjustable quota, least requested files evicted first.
+- The admin sees, per project and per month, the share of transfers done directly, through the relay and through the cache. This is the indicator to watch for cost.
+- Expiry after N days without a request.
+- A file is never deleted from the cache until the depot has confirmed it.
+- Files of projects marked active stay in the cache within the quota.
+- The admin sees cache usage and the outbound volume from the VPS over the month.
 
-### Dépôt NAS
+### NAS depot
 
-- Blobs rangés par empreinte dans un dossier choisi par l'admin. Aucune interface.
-- Vérification complète de l'intégrité une fois par mois, à basse priorité.
-- Reçoit chaque nuit les sauvegardes SQLite et PostgreSQL du VPS.
+- Blobs stored by hash in a folder chosen by the admin. No interface.
+- Full integrity check once a month, at low priority.
+- Receives the VPS's SQLite and PostgreSQL backups every night.
 
-## 6. La vie d'un projet
+## 6. The life of a project
 
-### Créer un projet
+### Creating a project
 
-1. Dans Banc, « Nouveau projet » : nom, mode, membres, modèle de projet.
-2. Le modèle (défini par l'admin) porte résolution, cadence, gestion couleur, format de proxy et les réglages imposés de la section 4.
-3. Banc crée l'arborescence dans le volume Banc et la déclare au serveur.
-4. Banc crée le projet dans Resolve par script. En collaboratif, dans la bibliothèque partagée. En réservation, dans la base locale, suivi d'une première publication `.drp`.
+1. In Banc, "New project": name, mode, members, project template.
+2. The template (defined by the admin) carries resolution, frame rate, color management, proxy format and the enforced settings of section 4.
+3. Banc creates the folder tree in the Banc volume and declares it to the server.
+4. Banc creates the project in Resolve by script. In collaborative mode, in the shared library. In reservation mode, in the local database, followed by a first `.drp` publication.
 
-### Ajouter des rushes
+### Adding rushes
 
-Bouton « Ajouter des rushes » dans Banc :
+"Add rushes" button in Banc:
 
-1. Choix de la source (carte, disque, dossier), du jour de tournage et de la caméra. Banc range dans `Rushes/J03/CamA/` en gardant la structure d'origine de la carte.
-2. Copie vérifiée par empreinte. La carte n'est jamais modifiée. Un rapport est gardé dans `.banc/`.
-3. Envoi des originaux au dépôt.
-4. Génération des proxys (voir ci-dessous) et publication.
-5. Import des clips dans le projet par script, dans des chutiers par jour et par caméra.
-6. Message « Deux copies vérifiées » quand le dépôt a tout confirmé.
+1. Choice of source (card, disk, folder), shoot day and camera. Banc files them under `Rushes/D03/CamA/`, keeping the card's original structure.
+2. Copy verified by hash. The card is never modified. A report is kept in `.banc/`.
+3. Originals sent to the depot.
+4. Proxy generation (see below) and publication.
+5. Clips imported into the project by script, into bins by day and by camera.
+6. "Two verified copies" message once the depot has confirmed everything.
 
-Quelqu'un qui copie des rushes à la main dans le volume Banc, ou qui les importe depuis un disque externe, est rattrapé par la consolidation.
+Someone who copies rushes by hand into the Banc volume, or imports them from an external disk, is caught by consolidation.
 
-### Proxys
+### Proxies
 
-- Lieu de génération, au choix de l'admin par projet : le poste qui ingère (par défaut), ou une machine de rendu s'il y en a une.
-- Outil à choisir au prototype P4 : Blackmagic Proxy Generator, file de rendu de Resolve en clips individuels, ou ffmpeg pour les formats qu'il lit.
-- Une surveillance de dossiers est admise pendant la génération, et seulement pendant.
-- Lien proxy et original : automatique quand le proxy est dans le sous-dossier `Proxy`. Secours : `MediaPoolItem.LinkProxyMedia`.
-- Format de proxy à choisir au prototype, avec une contrainte : lisible et générable sur les trois OS.
+- Where they are generated, chosen by the admin per project: the ingesting workstation (default), or a render machine if there is one.
+- Tool to be chosen in prototype P4: Blackmagic Proxy Generator, Resolve's render queue as individual clips, or ffmpeg for the formats it reads.
+- Folder watching is allowed during generation, and only during generation.
+- Proxy-to-original link: automatic when the proxy is in the `Proxy` subfolder. Fallback: `MediaPoolItem.LinkProxyMedia`.
+- Proxy format to be chosen in the prototype, with one constraint: readable and generatable on all three OSes.
 
-### Consolidation automatique
+### Automatic consolidation
 
-Elle rattrape tout fichier entré dans le projet par un autre chemin, par exemple une musique glissée des Téléchargements dans la timeline.
+It catches any file that entered the project by another route, for example music dragged from Downloads into the timeline.
 
-1. **Quand.** Seulement pendant que Resolve est ouvert sur un projet Banc. Déclencheurs : changement du nombre de clips du projet, publication, fermeture du projet. Filet de sécurité toutes les 5 minutes.
-2. **Quoi.** L'assistant lit le chemin des clips ajoutés depuis le dernier passage (`GetClipProperty("File Path")`). Il ne reparcourt jamais tout le projet, il garde un index des clips déjà vus.
-3. **Copie.** Un clip hors du volume Banc est copié dans le projet : `Audio/` pour le son, `Graphics/` pour les images, `Media/` pour les vidéos.
-4. **Remplacement.** Banc pointe le clip vers la copie (`MediaPoolItem.ReplaceClip`). La timeline ne bouge pas.
-5. **Publication** en classe `media`, donc distribution automatique.
+1. **When.** Only while Resolve is open on a Banc project. Triggers: change in the project's clip count, publication, project close. Safety net every 5 minutes.
+2. **What.** The session helper reads the path of the clips added since the last pass (`GetClipProperty("File Path")`). It never walks the whole project again; it keeps an index of clips already seen.
+3. **Copy.** A clip outside the Banc volume is copied into the project: `Audio/` for sound, `Graphics/` for images, `Media/` for videos.
+4. **Replacement.** Banc points the clip at the copy (`MediaPoolItem.ReplaceClip`). The timeline does not move.
+5. **Publication** as class `media`, hence automatic distribution.
 
-Garde-fous :
+Safeguards:
 
-- La consolidation tourne sur le poste de la personne qui a importé le fichier. C'est elle qui tient le chutier en mode collaboratif, donc le remplacement ne se heurte pas au verrou d'un autre.
-- Si le remplacement échoue (chutier verrouillé), Banc réessaie plus tard et le fichier est quand même publié.
-- Au-dessus d'un seuil (5 Go par défaut), Banc demande avant de copier.
-- Deux fichiers différents du même nom : le second est renommé.
-- Un fichier déjà dans le volume Banc est publié sans copie.
+- Consolidation runs on the workstation of the person who imported the file. In collaborative mode that person holds the bin, so the replacement does not run into someone else's lock.
+- If the replacement fails (locked bin), Banc retries later and the file is published anyway.
+- Above a threshold (5 GB by default), Banc asks before copying.
+- Two different files with the same name: the second is renamed.
+- A file already in the Banc volume is published without a copy.
 
-## 7. Deux modes de projet
+## 7. Two project modes
 
-### Mode réservation
+### Reservation mode
 
-- Ouvrir : dernière version `.drp` importée dans la base locale, verrou pris si l'utilisateur veut modifier.
-- Publier : export `.drp`, nouvelle version, verrou relâché ou gardé.
-- Un seul détenteur du verrou. L'admin peut le forcer. Un verrou sans signe de vie depuis 24 h est signalé à l'admin.
-- Un projet local du même nom est renommé, jamais écrasé.
-- Fonctionne hors ligne. Les publications partent au retour de la connexion.
+- Open: latest `.drp` version imported into the local database, lock taken if the user wants to edit.
+- Publish: `.drp` export, new version, lock released or kept.
+- A single lock holder. The admin can force it. A lock with no sign of life for 24 h is reported to the admin.
+- A local project with the same name is renamed, never overwritten.
+- Works offline. Publications go out when the connection comes back.
 
-### Mode collaboratif
+### Collaborative mode
 
-La collaboration native de Resolve sur une base PostgreSQL partagée, joignable sans VPN.
+Resolve's native collaboration on a shared PostgreSQL database, reachable without a VPN.
 
-**Sur le VPS**
+**On the VPS**
 
-- PostgreSQL 18 en Docker (version embarquée par le Project Server de Resolve 21.1, qui accepte les bibliothèques réseau à partir de PostgreSQL 13).
-- Sauvegardes reprises du projet `elliotmatson/Docker-Davinci-Resolve-Project-Server` (`prodrigestivill/postgres-backup-local`, format `.backup` restaurable depuis Resolve). Fréquence : toutes les heures, car tous les postes partagent le même compte PostgreSQL et une erreur peut tout toucher.
-- Pas de pgAdmin en service.
+- PostgreSQL 18 in Docker (the version bundled with Resolve 21.1's Project Server, which accepts network libraries from PostgreSQL 13 onwards).
+- Backups taken from the `elliotmatson/Docker-Davinci-Resolve-Project-Server` project (`prodrigestivill/postgres-backup-local`, `.backup` format restorable from Resolve). Frequency: every hour, because all workstations share the same PostgreSQL account and one mistake can affect everything.
+- No pgAdmin service.
 
-**Le tunnel**
+**The tunnel**
 
-- La fenêtre « Ajouter une bibliothèque de projets » de Resolve n'a pas de champ port. Resolve se connecte sur 5432.
-- `banc-agent` écoute sur `127.0.0.2:5432` pour ne pas gêner un PostgreSQL local. Linux et Windows acceptent déjà cette adresse. Sur macOS, le service ajoute l'alias au démarrage (`ifconfig lo0 alias 127.0.0.2 up`).
-- Chaque connexion passe dans un flux iroh jusqu'au VPS, qui la relie à son PostgreSQL local.
-- Le tunnel n'est ouvert que pendant que Resolve tourne.
+- Resolve's "Add Project Library" window has no port field. Resolve connects on 5432.
+- `banc-agent` listens on `127.0.0.2:5432` so as not to get in the way of a local PostgreSQL. Linux and Windows already accept this address. On macOS, the service adds the alias at startup (`ifconfig lo0 alias 127.0.0.2 up`).
+- Each connection goes through an iroh stream to the VPS, which connects it to its local PostgreSQL.
+- The tunnel is only open while Resolve is running.
 
-**Déclarer la bibliothèque dans Resolve**, pistes dans l'ordre :
+**Declaring the library in Resolve**, options in order:
 
-1. La clé d'accès `.resolvedbkey`, que le Project Server sait générer. Glissée sur le gestionnaire de projets, elle ajoute la base sans saisie. Si Banc peut la générer lui-même, l'utilisateur n'a rien à taper.
-2. L'API : `ProjectManager.GetDatabaseList()` et `SetCurrentDatabase({...})`.
-3. Le fichier de configuration où Resolve garde sa liste de bibliothèques.
-4. Secours : Banc affiche les quatre valeurs avec un bouton « copier » par champ, à coller une fois dans Réseau > Ajouter une bibliothèque de projets > Connecter.
+1. The `.resolvedbkey` access key, which the Project Server can generate. Dropped onto the project manager, it adds the database without any typing. If Banc can generate it itself, the user has nothing to type.
+2. The API: `ProjectManager.GetDatabaseList()` and `SetCurrentDatabase({...})`.
+3. The configuration file where Resolve keeps its list of libraries.
+4. Fallback: Banc shows the four values with a "copy" button per field, to paste once into Network > Add Project Library > Connect.
 
-**Garde-fous**
+**Safeguards**
 
-- Avant d'ouvrir un projet collaboratif, Banc vérifie que les fichiers à distribution automatique sont présents.
-- Au-dessus de 40 ms de latence vers le VPS, Banc prévient et propose le mode réservation.
-- Tunnel coupé : l'interface le signale tout de suite.
+- Before opening a collaborative project, Banc checks that the automatically distributed files are present.
+- Above 40 ms of latency to the VPS, Banc warns and suggests reservation mode.
+- Tunnel down: the interface reports it immediately.
 
-## 8. La version de Resolve
+## 8. The Resolve version
 
-- L'admin fixe dans le manifeste la version que tous les postes doivent avoir.
-- L'agent détecte la version installée à l'enrôlement, à chaque connexion et à chaque lancement de Resolve.
-- Un poste qui n'a pas la bonne version ne peut pas ouvrir de projet par Banc. Banc affiche pourquoi, télécharge le bon installeur depuis le serveur et le lance.
-- **Changement de version**, lancé par l'admin :
-  1. L'admin publie un manifeste avec la nouvelle version et une date de bascule.
-  2. Tous les postes sont prévenus. Chacun télécharge l'installeur à l'avance.
-  3. À la bascule, Banc demande de fermer les projets collaboratifs et vérifie que plus personne n'est connecté à la base.
-  4. Sauvegarde PostgreSQL complète, envoyée au dépôt.
-  5. Les postes installent la nouvelle version. Le premier poste à jour ouvre la bibliothèque, que Resolve met à niveau.
-  6. Les postes pas encore à jour restent bloqués jusqu'à leur mise à jour.
-- **Contrôle de compatibilité.** Après chaque changement de version de Resolve, l'agent vérifie que les fichiers de préférences qu'il écrit ont toujours le format attendu. Sinon il n'écrit rien, passe en mode guidé (l'utilisateur fait le réglage une fois) et prévient l'admin.
+- The admin sets in the manifest the version every workstation must have.
+- The agent detects the installed version at enrollment, at every connection and every time Resolve starts.
+- A workstation without the right version cannot open a project through Banc. Banc shows why, downloads the right installer from the server and runs it.
+- **Version change**, started by the admin:
+  1. The admin publishes a manifest with the new version and a switchover date.
+  2. All workstations are notified. Each one downloads the installer in advance.
+  3. At switchover, Banc asks for collaborative projects to be closed and checks that nobody is connected to the database any more.
+  4. Full PostgreSQL backup, sent to the depot.
+  5. Workstations install the new version. The first updated workstation opens the library, which Resolve upgrades.
+  6. Workstations not yet updated stay blocked until they are.
+- **Compatibility check.** After every Resolve version change, the agent checks that the preference files it writes still have the expected format. If not, it writes nothing, switches to guided mode (the user makes the setting once) and notifies the admin.
 
-## 9. Le rendu
+## 9. Rendering
 
-Une machine de rendu est un plus. Tout fonctionne sans.
+A render machine is a bonus. Everything works without one.
 
-- **Rendu local intercepté.** Pendant que Resolve est ouvert, l'assistant suit la file de rendu (`GetRenderJobList`, `GetRenderJobStatus`). À la fin d'un rendu, Banc publie le fichier en classe `export` avec la timeline, l'auteur et la date, et prévient l'équipe. Un rendu fait hors de `Exports/` y est copié.
-- **Rendu différé.** « Rendre plus tard » met le rendu en file sur le poste de l'utilisateur. Il part à une heure choisie ou quand le poste est inactif.
-- **Rendu délégué.** Un poste peut se déclarer disponible pour les rendus des autres (la nuit, ou quand il est inactif). Banc y récupère d'abord les originaux de la timeline, puis lance le rendu.
-- **Machine dédiée**, s'il y en a une : même mécanisme, toujours prioritaire.
-- Ordre de choix : machine dédiée libre, poste volontaire inactif, sinon le poste de l'utilisateur.
-- Une machine ne reçoit un rendu que si elle a la bonne version de Resolve et tous les paquets requis.
-- Script `render_job.py` : ouverture du projet, `LoadRenderPreset`, `SetRenderSettings`, `AddRenderJob`, `StartRendering`, suivi de la progression.
-- Notification système, et webhook optionnel (Discord, Slack, ntfy).
+- **Intercepted local render.** While Resolve is open, the session helper follows the render queue (`GetRenderJobList`, `GetRenderJobStatus`). When a render finishes, Banc publishes the file as class `export` with the timeline, author and date, and notifies the team. A render made outside `Exports/` is copied there.
+- **Deferred render.** "Render later" queues the render on the user's workstation. It starts at a chosen time or when the workstation is idle.
+- **Delegated render.** A workstation can declare itself available for other people's renders (at night, or when idle). Banc first fetches the timeline's originals there, then starts the render.
+- **Dedicated machine**, if there is one: same mechanism, always preferred.
+- Order of choice: free dedicated machine, idle volunteer workstation, otherwise the user's workstation.
+- A machine only receives a render if it has the right Resolve version and all required packages.
+- `render_job.py` script: open the project, `LoadRenderPreset`, `SetRenderSettings`, `AddRenderJob`, `StartRendering`, track progress.
+- System notification, and optional webhook (Discord, Slack, ntfy).
 
-## 10. Ce qui tourne, et quand
+## 10. What runs, and when
 
-| État du poste | Activité de Banc |
+| Workstation state | Banc activity |
 |---|---|
-| Resolve fermé, rien demandé | Une connexion au serveur et un signe de vie toutes les 5 minutes. Rien d'autre. |
-| Un autre poste demande un fichier | Envoi du fichier dans les limites de débit, puis retour au repos. |
-| Transfert en cours | Le transfert, puis retour au repos. |
-| Resolve ouvert sur un projet Banc | Tunnel PostgreSQL (collaboratif), consolidation, détection des médias modifiés, suivi de la file de rendu, réception automatique des nouveaux fichiers. |
-| Génération de proxys | Surveillance du dossier concerné, jusqu'à la fin. |
-| Heure d'un rendu différé | Lancement de Resolve et du rendu. |
+| Resolve closed, nothing requested | One connection to the server and a heartbeat every 5 minutes. Nothing else. |
+| Another workstation requests a file | Sends the file within the rate limits, then back to rest. |
+| Transfer in progress | The transfer, then back to rest. |
+| Resolve open on a Banc project | PostgreSQL tunnel (collaborative), consolidation, detection of modified media, render queue tracking, automatic reception of new files. |
+| Proxy generation | Watching of the folder concerned, until it finishes. |
+| Time of a deferred render | Starting Resolve and the render. |
 
-Cibles au repos : service sous 15 Mo de RAM, assistant de session sous 10 Mo, CPU à 0 %.
+Targets at rest: service under 15 MB of RAM, session helper under 10 MB, CPU at 0%.
 
-## 11. Chemins par OS
+## 11. Paths per OS
 
-À vérifier sur une vraie machine et à figer dans `banc-platform`.
+To be checked on a real machine and frozen in `banc-platform`.
 
-| Élément | macOS | Windows | Linux |
+| Item | macOS | Windows | Linux |
 |---|---|---|---|
-| Plugins OFX | `/Library/OFX/Plugins` | `C:\Program Files\Common Files\OFX\Plugins` | `/usr/OFX/Plugins` |
-| LUT | `/Library/Application Support/Blackmagic Design/DaVinci Resolve/LUT` | `C:\ProgramData\Blackmagic Design\DaVinci Resolve\Support\LUT` | `/opt/resolve/LUT` ou `~/.local/share/DaVinciResolve/LUT` |
-| Templates Fusion | `~/Library/Application Support/Blackmagic Design/DaVinci Resolve/Fusion/Templates` | `%APPDATA%\Blackmagic Design\DaVinci Resolve\Support\Fusion\Templates` | `~/.local/share/DaVinciResolve/Fusion/Templates` |
+| OFX plugins | `/Library/OFX/Plugins` | `C:\Program Files\Common Files\OFX\Plugins` | `/usr/OFX/Plugins` |
+| LUT | `/Library/Application Support/Blackmagic Design/DaVinci Resolve/LUT` | `C:\ProgramData\Blackmagic Design\DaVinci Resolve\Support\LUT` | `/opt/resolve/LUT` or `~/.local/share/DaVinciResolve/LUT` |
+| Fusion templates | `~/Library/Application Support/Blackmagic Design/DaVinci Resolve/Fusion/Templates` | `%APPDATA%\Blackmagic Design\DaVinci Resolve\Support\Fusion\Templates` | `~/.local/share/DaVinciResolve/Fusion/Templates` |
 | Scripts | `/Library/Application Support/Blackmagic Design/DaVinci Resolve/Fusion/Scripts` | `%PROGRAMDATA%\Blackmagic Design\DaVinci Resolve\Fusion\Scripts` | `/opt/resolve/Fusion/Scripts` |
-| API de script | `/Library/Application Support/Blackmagic Design/DaVinci Resolve/Developer/Scripting/Modules` | `%PROGRAMDATA%\Blackmagic Design\DaVinci Resolve\Support\Developer\Scripting\Modules` | `/opt/resolve/Developer/Scripting/Modules` |
+| Scripting API | `/Library/Application Support/Blackmagic Design/DaVinci Resolve/Developer/Scripting/Modules` | `%PROGRAMDATA%\Blackmagic Design\DaVinci Resolve\Support\Developer\Scripting\Modules` | `/opt/resolve/Developer/Scripting/Modules` |
 
-Le `README.txt` du dossier `Developer/Scripting` de la version installée fait foi.
+The `README.txt` in the `Developer/Scripting` folder of the installed version is authoritative.
 
-## 12. Prototypes à faire avant de coder
+## 12. Prototypes to build before coding
 
-Ce sont des scripts jetables, lancés à la main. Chacun répond à une question dont dépend une partie du plan. Noter les réponses dans `docs/prototypes.md`.
+These are throwaway scripts, run by hand. Each one answers a question that part of the plan depends on. Record the answers in `docs/prototypes.md`.
 
-- **P1. Chemins.** Créer le volume APFS sur un Mac et la lettre `B:` sur un PC. Importer un média sur Mac dans un projet partagé, vérifier qu'il est en ligne sur le PC avec le Mapped Mount. Trouver le fichier des préférences Media Storage et vérifier qu'on peut y écrire.
-- **P2. Proxys sans originaux.** Sur un poste qui n'a que les dossiers `Proxy`, les clips sont-ils reliés à leurs proxys et montables ?
-- **P3. Bibliothèque partagée.** Générer une clé `.resolvedbkey` avec le Project Server, examiner son format, tester avec l'adresse `127.0.0.2`. Tester `SetCurrentDatabase` sur une base absente de la liste.
-- **P4. Collaboration à distance.** Resolve sur une base PostgreSQL distante par un tunnel SSH. Mesurer la latence acceptable.
-- **P5. Consolidation.** `ReplaceClip` sur un clip utilisé dans une timeline : la timeline reste-t-elle intacte ? En collaboratif, que se passe-t-il si le chutier est verrouillé par un autre ? Combien de temps prend la lecture des chemins de 10 000 clips ?
-- **P6. Proxys.** Le Proxy Generator se commande-t-il sans sa fenêtre ? Quels formats sur chaque OS ? Sinon, file de rendu en clips individuels ou ffmpeg, puis `LinkProxyMedia`.
-- **P7. Rendu.** Suivre la file de rendu par l'API pendant qu'un utilisateur lance un rendu à la main. Tester `-nogui`.
-- **P8. Fichier ouvert.** Sur Windows, remplacer un fichier que Resolve utilise. Trouver comment faire recharger le clip.
-- **P9. Plugins.** Tester l'installation silencieuse des plugins réellement utilisés par l'équipe.
-- **P10. Technique.** Stabilité d'`iroh-blobs`. Version de Python acceptée par Resolve. Réglage « External scripting » de Resolve.
+- **P1. Paths.** Create the APFS volume on a Mac and the `B:` letter on a PC. Import a clip on the Mac into a shared project, check that it is online on the PC with the Mapped Mount. Find the Media Storage preferences file and check that it can be written to.
+- **P2. Proxies without originals.** On a workstation that only has the `Proxy` folders, are clips linked to their proxies and editable?
+- **P3. Shared library.** Generate a `.resolvedbkey` key with the Project Server, examine its format, test it with the address `127.0.0.2`. Test `SetCurrentDatabase` on a database missing from the list.
+- **P4. Remote collaboration.** Resolve on a remote PostgreSQL database through an SSH tunnel. Measure the acceptable latency.
+- **P5. Consolidation.** `ReplaceClip` on a clip used in a timeline: does the timeline stay intact? In collaborative mode, what happens if the bin is locked by someone else? How long does reading the paths of 10,000 clips take?
+- **P6. Proxies.** Can the Proxy Generator be driven without its window? Which formats on each OS? Otherwise, render queue as individual clips or ffmpeg, then `LinkProxyMedia`.
+- **P7. Rendering.** Follow the render queue through the API while a user starts a render by hand. Test `-nogui`.
+- **P8. Open file.** On Windows, replace a file that Resolve is using. Find out how to make it reload the clip.
+- **P9. Plugins.** Test silent installation of the plugins the team actually uses.
+- **P10. Technical.** Stability of `iroh-blobs`. Python version accepted by Resolve. Resolve's "External scripting" setting.
 
 ## 13. Phases
 
-Durées indicatives pour un développeur assisté de Claude Code. Les phases 0 à 4 forment une première version utile au quotidien.
+Indicative durations for one developer assisted by Claude Code. Phases 0 to 4 make up a first version useful day to day.
 
-### Phase 0. Squelette (3 à 4 jours)
+### Phase 0. Skeleton (3 to 4 days)
 
-- Workspace Cargo, `xtask`.
-- Toute l'intégration continue de la section 15 : workflows, protection de `main`, contrôle des messages de commit, `cargo xtask check`.
-- Logs avec rotation, configuration TOML du serveur.
+- Cargo workspace, `xtask`.
+- All the continuous integration of section 15: workflows, protection of `main`, commit message check, `cargo xtask check`.
+- Logs with rotation, TOML server configuration.
 
-Acceptation :
-- Les trois binaires se compilent pour toutes les cibles.
-- Une PR avec une erreur de format, un avertissement clippy, un test cassé ou un commit mal nommé est refusée par la CI.
-- On ne peut pas pousser directement sur `main`.
+Acceptance:
+- The three binaries build for every target.
+- A PR with a formatting error, a clippy warning, a broken test or a badly named commit is refused by CI.
+- Pushing directly to `main` is impossible.
 
-### Phase 1. Enrôlement, inventaire, clé admin (2 semaines)
+### Phase 1. Enrollment, inventory, admin key (2 weeks)
 
-- Serveur : enrôlement, invitations, machines, endpoint et relais iroh, admin web minimal.
-- Agent : clé machine, connexion, signe de vie, service système, assistant de session, lien `banc://`, inventaire, détection de la version de Resolve.
-- Clé admin : génération dans l'application, phrase de récupération, empreinte dans l'invitation.
-- `cargo xtask idle-bench` : la commande existe depuis la phase 0 pour l'agent sous Linux. L'étendre à l'assistant de session, à macOS et à Windows.
+- Server: enrollment, invitations, machines, iroh endpoint and relay, minimal web admin.
+- Agent: machine key, connection, heartbeat, system service, session helper, `banc://` link, inventory, Resolve version detection.
+- Admin key: generation in the application, recovery phrase, fingerprint in the invitation.
+- `cargo xtask idle-bench`: the command has existed since phase 0 for the agent on Linux. Extend it to the session helper, macOS and Windows.
 
-Acceptation :
-- Une machine de chaque OS s'enrôle avec un lien, sans terminal.
-- L'admin voit les machines et leur version de Resolve.
-- Cibles de consommation au repos tenues.
+Acceptance:
+- One machine of each OS enrolls with a link, without a terminal.
+- The admin sees the machines and their Resolve version.
+- Resource targets at rest are met.
 
-### Phase 2. Manifeste signé, installation, version de Resolve (2 à 3 semaines)
+### Phase 2. Signed manifest, installation, Resolve version (2 to 3 weeks)
 
-- Dépôt de paquets, éditeur de manifeste, signature à la publication.
-- Agent : vérification de signature, comparaison état local et manifeste, installation (`copy`, `pkg`, `msi`, `exe`, `deb`, `rpm`, `run`, `font`, `manual`).
-- Rien ne s'installe pendant que Resolve est ouvert. Banc ne désinstalle que ce qu'il a installé.
-- Blocage de l'ouverture des projets si la version de Resolve ne correspond pas.
-- Grille machines et paquets dans l'admin.
+- Package store, manifest editor, signature on publication.
+- Agent: signature verification, comparison of local state against the manifest, installation (`copy`, `pkg`, `msi`, `exe`, `deb`, `rpm`, `run`, `font`, `manual`).
+- Nothing is installed while Resolve is open. Banc only uninstalls what it installed.
+- Opening projects is blocked if the Resolve version does not match.
+- Machines-by-packages grid in the admin.
 
-Acceptation :
-- Un plugin `.ofx.bundle`, une police, une LUT et un preset s'installent seuls sur les trois OS.
-- Un manifeste modifié directement dans la base du serveur est refusé par les postes.
-- Un paquet dont l'empreinte ne correspond pas est refusé.
+Acceptance:
+- An `.ofx.bundle` plugin, a font, a LUT and a preset install by themselves on all three OSes.
+- A manifest modified directly in the server database is refused by the workstations.
+- A package whose hash does not match is refused.
 
-### Phase 3. Volume, fichiers, dépôt, cache (3 à 4 semaines)
+### Phase 3. Volume, files, depot, cache (3 to 4 weeks)
 
-- Création du volume Banc sur les trois OS, écriture du Mapped Mount.
-- `banc-blobs` : magasin, empreintes, transfert vérifié, reprise, choix des sources.
-- Rôle dépôt et image Docker. Cache du VPS.
-- Classes de fichiers, distribution automatique et à la demande, révisions, détection de corruption, règle des deux copies, suppressions, libération d'espace.
+- Creation of the Banc volume on all three OSes, writing of the Mapped Mount.
+- `banc-blobs`: store, hashes, verified transfer, resume, source selection.
+- Depot role and Docker image. VPS cache.
+- File classes, automatic and on-demand distribution, revisions, corruption detection, two-copy rule, deletions, freeing space.
 
-Acceptation :
-- Un poste publie 50 Go puis s'éteint. Un autre, sur un autre réseau sans port ouvert, les récupère.
-- Deux postes du même LAN s'échangent les fichiers sans sortir sur Internet.
-- Entre deux postes distants en connexion directe, 50 Go transférés ne font pas bouger le compteur de sortie du VPS.
-- Un poste qui télécharge prend ses fichiers chez deux autres postes à la fois.
-- Un fichier `media` modifié arrive en nouvelle révision chez les autres. Deux modifications concurrentes donnent deux fichiers et deux notifications.
-- « Libérer l'espace » est refusé pour un original qui n'a qu'une copie ailleurs.
-- Le cache ne supprime jamais un fichier absent du dépôt.
+Acceptance:
+- A workstation publishes 50 GB then shuts down. Another one, on another network with no open port, fetches them.
+- Two workstations on the same LAN exchange files without going out to the Internet.
+- Between two remote workstations on a direct connection, 50 GB transferred do not move the VPS outbound counter.
+- A downloading workstation takes its files from two other workstations at once.
+- A modified `media` file reaches the others as a new revision. Two concurrent modifications give two files and two notifications.
+- "Free up space" is refused for an original that has only one copy elsewhere.
+- The cache never deletes a file missing from the depot.
 
-### Phase 4. Projets en réservation (3 à 4 semaines)
+### Phase 4. Reservation projects (3 to 4 weeks)
 
-- Scripts Python du pont Resolve.
-- Création de projet avec modèle et réglages imposés.
-- Ingest : copie vérifiée, envoi au dépôt, proxys, import dans les chutiers.
-- Consolidation automatique.
-- Ouvrir, publier, verrou, travail hors ligne.
-- « Récupérer les originaux de cette timeline ».
+- Python scripts for the Resolve bridge.
+- Project creation with template and enforced settings.
+- Ingest: verified copy, sending to the depot, proxies, import into bins.
+- Automatic consolidation.
+- Open, publish, lock, offline work.
+- "Fetch the originals for this timeline".
 
-Acceptation :
-- Un projet créé et alimenté sur Mac s'ouvre sur Windows et Linux avec ses proxys reliés.
-- Une musique glissée des Téléchargements dans la timeline se retrouve dans `Audio/`, publiée, sans changement dans la timeline.
-- Deux utilisateurs ne peuvent pas détenir le verrou en même temps.
+Acceptance:
+- A project created and filled on a Mac opens on Windows and Linux with its proxies linked.
+- Music dragged from Downloads into the timeline ends up in `Audio/`, published, with no change in the timeline.
+- Two users cannot hold the lock at the same time.
 
-### Phase 5. Collaboration (2 à 3 semaines)
+### Phase 5. Collaboration (2 to 3 weeks)
 
-- PostgreSQL et sauvegardes sur le VPS, copie vers le dépôt.
-- `banc-tunnel`, alias `127.0.0.2`, déclaration de la bibliothèque selon la piste retenue.
-- Création de projet collaboratif, distribution automatique en direct entre postes ouverts.
-- Procédure de changement de version de Resolve.
+- PostgreSQL and backups on the VPS, copy to the depot.
+- `banc-tunnel`, `127.0.0.2` alias, library declaration using the option chosen.
+- Collaborative project creation, automatic direct distribution between open workstations.
+- Resolve version change procedure.
 
-Acceptation :
-- Deux postes derrière deux box différentes travaillent dans le même projet, sans VPN ni port ouvert.
-- Une musique ajoutée par l'un est en ligne chez l'autre en moins d'une minute.
-- PostgreSQL n'est joignable depuis Internet par aucun port.
-- Une sauvegarde est présente sur le NAS et se restaure depuis Resolve.
+Acceptance:
+- Two workstations behind two different home routers work in the same project, without a VPN or an open port.
+- Music added by one is online for the other in less than a minute.
+- PostgreSQL cannot be reached from the Internet on any port.
+- A backup is present on the NAS and can be restored from Resolve.
 
-### Phase 6. Rendu (2 à 3 semaines)
+### Phase 6. Rendering (2 to 3 weeks)
 
-- Rendu local intercepté et publication dans `Exports/`.
-- Rendu différé.
-- Rendu délégué à un poste volontaire ou à une machine dédiée.
+- Intercepted local render and publication in `Exports/`.
+- Deferred render.
+- Render delegated to a volunteer workstation or a dedicated machine.
 - Notifications.
 
-Acceptation :
-- Un rendu lancé à la main dans Resolve apparaît dans `Exports/` chez son auteur et dans la liste du projet pour les autres.
-- Un rendu différé part à l'heure prévue.
-- Une machine sans un plugin requis ne reçoit pas le rendu.
+Acceptance:
+- A render started by hand in Resolve appears in `Exports/` for its author and in the project list for the others.
+- A deferred render starts at the scheduled time.
+- A machine missing a required plugin does not receive the render.
 
-### Phase 7. Distribution et mises à jour (2 semaines)
+### Phase 7. Distribution and updates (2 weeks)
 
-- Mise à jour automatique signée, retour arrière si la nouvelle version ne démarre pas.
-- Installeurs : `.pkg` signé et notarisé, `.msi` signé, `.deb`, `.rpm`, AppImage.
-- Serveur en Docker Compose complet. Dépôt en image Docker pour Synology et QNAP.
-- Sauvegarde nocturne de SQLite vers le dépôt.
+- Signed automatic update, rollback if the new version does not start.
+- Installers: signed and notarized `.pkg`, signed `.msi`, `.deb`, `.rpm`, AppImage.
+- Server as a complete Docker Compose setup. Depot as a Docker image for Synology and QNAP.
+- Nightly SQLite backup to the depot.
 
-Acceptation :
-- Une nouvelle version arrive sur tous les postes dans l'heure.
-- Une installation fraîche sur Mac n'affiche aucun avertissement Gatekeeper.
+Acceptance:
+- A new version reaches every workstation within the hour.
+- A fresh install on a Mac shows no Gatekeeper warning.
 
-### Phase 8. Finitions (en continu)
+### Phase 8. Finishing touches (ongoing)
 
-- Archivage d'un projet : tout rassemblé sur le dépôt, `.drp` final, libération du cache et des postes.
-- Tableau de bord admin : copies par projet, espace des postes, transferts, cache, rendus.
-- Diagnostic en un clic.
-- Documentation utilisateur d'une page, documentation admin.
+- Project archiving: everything gathered on the depot, final `.drp`, cache and workstations freed.
+- Admin dashboard: copies per project, workstation space, transfers, cache, renders.
+- One-click diagnostics.
+- One-page user documentation, admin documentation.
 
-## 14. Prompts de démarrage pour Claude Code
+## 14. Starting prompts for Claude Code
 
-Une session par ligne :
+One session per line:
 
-1. « Lis CLAUDE.md et docs/PLAN.md. Réalise la phase 0. »
-2. « Prépare les prototypes P1 et P2 : les scripts et la marche à suivre, que je lance à la main. Dis-moi quoi observer et où noter le résultat. »
-3. « Prototypes P3 et P4. »
-4. « Prototypes P5 à P8. »
-5. « Phase 1, partie serveur. Écris les tests. »
-6. « Phase 1, partie agent. Commence par macOS. »
-7. Puis phase par phase.
+1. "Read CLAUDE.md and docs/PLAN.md. Carry out phase 0."
+2. "Prepare prototypes P1 and P2: the scripts and the procedure, which I run by hand. Tell me what to observe and where to record the result."
+3. "Prototypes P3 and P4."
+4. "Prototypes P5 to P8."
+5. "Phase 1, server side. Write the tests."
+6. "Phase 1, agent side. Start with macOS."
+7. Then phase by phase.
 
-Après chaque phase, demande à Claude Code de mettre à jour `CLAUDE.md` avec les commandes réelles, les décisions prises et les mesures de `idle-bench`. Après chaque prototype, fais-lui corriger ce plan si la réponse change une hypothèse.
+After each phase, ask Claude Code to update `CLAUDE.md` with the real commands, the decisions taken and the `idle-bench` measurements. After each prototype, have it correct this plan if the answer changes an assumption.
 
-## 15. Intégration continue et commits
+## 15. Continuous integration and commits
 
-À mettre en place en phase 0, avant tout code de produit.
+To be set up in phase 0, before any product code.
 
-### Règles du dépôt
+### Repository rules
 
-- `main` est protégée : pas de push direct, pas de force push, tout passe par une PR.
-- Une PR ne peut être fusionnée que si tous les contrôles obligatoires sont verts et que la branche est à jour avec `main`.
-- Fusion en « squash ». Le titre de la PR devient le message du commit sur `main`, donc il suit la même convention que les commits.
-- Une branche par tâche, nommée `type/sujet-court` (`feat/ingest-copie-verifiee`, `fix/tunnel-reconnexion`).
+- `main` is protected: no direct push, no force push, everything goes through a PR.
+- A PR can only be merged if all required checks are green and the branch is up to date with `main`.
+- "Squash" merge. The PR title becomes the commit message on `main`, so it follows the same convention as commits.
+- One branch per task, named `type/short-topic` (`feat/ingest-verified-copy`, `fix/tunnel-reconnect`).
 
-### Workflow `ci.yml`, à chaque push sur toute branche
+### `ci.yml` workflow, on every push to any branch
 
-Contrôles rapides, sur Linux, pour avoir une réponse en quelques minutes :
+Fast checks, on Linux, to get an answer within a few minutes:
 
 - `cargo fmt --all --check`
 - `cargo clippy --workspace --all-targets --locked -- -D warnings`
-- `cargo nextest run --workspace --locked` et les tests de documentation
-- Migrations SQL appliquées sur une base vide, puis vérification du schéma
-- Frontend : `pnpm lint`, `svelte-check`, `vitest`, `pnpm build`
-- Scripts Python du pont Resolve : `ruff check`, `ruff format --check`, compilation de chaque script
-- `cargo deny check` : failles connues, licences autorisées, dépendances en double ou interdites
-- Recherche de secrets dans le diff (`gitleaks`)
-- Contrôle des messages de commit (voir plus bas)
+- `cargo nextest run --workspace --locked` and the doc tests
+- SQL migrations applied to an empty database, then schema check
+- Frontend: `pnpm lint`, `svelte-check`, `vitest`, `pnpm build`
+- Python scripts for the Resolve bridge: `ruff check`, `ruff format --check`, compilation of each script
+- `cargo deny check`: known vulnerabilities, allowed licenses, duplicate or banned dependencies
+- Secret scanning of the diff (`gitleaks`)
+- Commit message check (see below)
 
-### Workflow `pr.yml`, à chaque PR et à chaque mise à jour d'une PR
+### `pr.yml` workflow, on every PR and every PR update
 
-Tout `ci.yml`, plus ce qui coûte plus cher :
+All of `ci.yml`, plus what costs more:
 
-- **Matrice des trois OS** : clippy et tests sur Linux, macOS et Windows. Le code de `banc-platform` diffère par OS, un contrôle sur Linux seul ne le couvre pas.
-- **Compilation de toutes les cibles** : Linux amd64 et arm64, macOS arm64 et amd64, Windows amd64.
-- **Tests d'intégration de bout en bout**, sur Linux, sans Resolve (avec le faux de `banc-resolve`) : un serveur, un dépôt et deux agents lancés dans des conteneurs. Scénarios : enrôlement, manifeste signé accepté et manifeste falsifié refusé, publication et récupération d'un fichier, révision d'un fichier `media`, refus d'un paquet à l'empreinte modifiée, tunnel TCP vers un PostgreSQL de test.
-- **Mesure au repos** : `cargo xtask idle-bench` sur l'agent Linux. La PR échoue si la mémoire ou le CPU au repos dépassent les cibles de la section 10.
-- **Titre de la PR** contrôlé avec la même convention que les commits.
-- Annulation automatique des exécutions en cours quand un nouveau commit arrive sur la même PR.
+- **Three-OS matrix**: clippy and tests on Linux, macOS and Windows. The `banc-platform` code differs per OS; a check on Linux alone does not cover it.
+- **Build of every target**: Linux amd64 and arm64, macOS arm64 and amd64, Windows amd64.
+- **End-to-end integration tests**, on Linux, without Resolve (using the `banc-resolve` fake): a server, a depot and two agents started in containers. Scenarios: enrollment, signed manifest accepted and forged manifest refused, publishing and fetching a file, revision of a `media` file, refusal of a package with a modified hash, TCP tunnel to a test PostgreSQL.
+- **Idle measurement**: `cargo xtask idle-bench` on the Linux agent. The PR fails if idle memory or CPU exceeds the targets of section 10.
+- **PR title** checked against the same convention as commits.
+- Automatic cancellation of running executions when a new commit arrives on the same PR.
 
-### Workflow `nightly.yml`, chaque nuit sur `main`
+### `nightly.yml` workflow, every night on `main`
 
-- Matrice complète des trois OS et toutes les cibles.
-- `cargo deny check advisories` avec la base de failles du jour, pour être prévenu d'une faille publiée dans une dépendance déjà en place.
-- Tests d'intégration longs (gros fichiers, coupure réseau simulée pendant un transfert, reprise).
-- Ouverture automatique d'une issue en cas d'échec.
+- Full matrix of the three OSes and every target.
+- `cargo deny check advisories` with the day's advisory database, to be warned about a vulnerability published in a dependency already in use.
+- Long integration tests (large files, network cut simulated during a transfer, resume).
+- An issue opened automatically on failure.
 
-### Workflow `release.yml`, sur un tag `vX.Y.Z` (phase 7)
+### `release.yml` workflow, on a `vX.Y.Z` tag (phase 7)
 
-- Compilation de toutes les cibles, installeurs, signature et notarisation.
-- Signature des binaires avec la clé de publication, gardée dans les secrets de la CI.
-- Journal des changements généré à partir des commits.
+- Build of every target, installers, signing and notarization.
+- Binaries signed with the release key, kept in the CI secrets.
+- Changelog generated from the commits.
 
-### Autres réglages
+### Other settings
 
-- Cache de compilation (`Swatinem/rust-cache`) pour garder des exécutions courtes.
-- `Cargo.lock` versionné et `--locked` partout.
-- Mises à jour de dépendances proposées chaque semaine par Renovate ou Dependabot, en PR groupées.
-- Les minutes de GitHub Actions sur un dépôt privé sont comptées plus cher sur macOS et Windows que sur Linux. C'est pour ça que les contrôles à chaque push restent sur Linux et que la matrice des trois OS tourne sur les PR. Vérifier les tarifs en vigueur au démarrage.
+- Build cache (`Swatinem/rust-cache`) to keep runs short.
+- `Cargo.lock` committed and `--locked` everywhere.
+- Dependency updates proposed every week by Renovate or Dependabot, as grouped PRs.
+- GitHub Actions minutes on a private repository cost more on macOS and Windows than on Linux. That is why the checks on every push stay on Linux and the three-OS matrix runs on PRs. Check current pricing when starting.
 
 ### `cargo xtask check`
 
-Une commande locale qui lance les mêmes contrôles que `ci.yml`. Claude Code la lance avant chaque commit. Un commit qui ne passe pas `cargo xtask check` ne doit pas être créé.
+A local command that runs the same checks as `ci.yml`. Claude Code runs it before every commit. A commit that does not pass `cargo xtask check` must not be created.
 
-### Nommage des commits
+### Commit naming
 
-Convention Conventional Commits, contrôlée par la CI sur chaque commit d'une PR et sur son titre.
+Conventional Commits convention, checked by CI on every commit of a PR and on its title.
 
 ```
-type(portée): description
+type(scope): description
 
-Corps facultatif : pourquoi ce changement, pas comment.
+Optional body: why this change, not how.
 
 Refs: phase 3, P5
 ```
 
-- **Types** : `feat`, `fix`, `refactor`, `perf`, `test`, `docs`, `build`, `ci`, `chore`.
-- **Portées**, une par commit, parmi : `server`, `agent`, `session`, `blobs`, `tunnel`, `resolve`, `platform`, `proto`, `ui`, `scripts`, `packaging`, `ci`, `docs`.
-- La portée est obligatoire pour `feat`, `fix`, `refactor`, `perf` et `test`. Elle est facultative pour `docs`, `build`, `ci` et `chore`, qui touchent souvent tout le dépôt.
-- **Description** en français, à l'infinitif, sans majuscule ni point final, 72 caractères au plus pour la première ligne.
-- Un changement cassant porte un `!` après la portée et une ligne `BREAKING CHANGE:` dans le corps.
-- Un commit fait une seule chose. Un refactor et une fonctionnalité vont dans deux commits.
-- Le pied de message cite la phase du plan, et le prototype s'il y en a un. La ligne `Refs:` est obligatoire. Un travail de prototype seul s'écrit `Refs: P1, P2`.
-- Les commits de Dependabot gardent leur propre format et ne sont pas contrôlés.
+- **Types**: `feat`, `fix`, `refactor`, `perf`, `test`, `docs`, `build`, `ci`, `chore`.
+- **Scopes**, one per commit, among: `server`, `agent`, `session`, `blobs`, `tunnel`, `resolve`, `platform`, `proto`, `ui`, `scripts`, `packaging`, `ci`, `docs`.
+- The scope is required for `feat`, `fix`, `refactor`, `perf` and `test`. It is optional for `docs`, `build`, `ci` and `chore`, which often touch the whole repository.
+- **Description** in English, starting with a verb in the imperative mood (`add`, not `added` or `adds`), no capital letter and no final period, 72 characters at most for the first line.
+- A breaking change carries a `!` after the scope and a `BREAKING CHANGE:` line in the body.
+- A commit does one thing. A refactor and a feature go in two commits.
+- The footer cites the plan phase, and the prototype if there is one. The `Refs:` line is required. Prototype work alone is written `Refs: P1, P2`.
+- Dependabot commits keep their own format and are not checked.
 
-Exemples :
+Examples:
 
 ```
-feat(blobs): choisir les sources directes avant le cache
-fix(tunnel): rouvrir le flux après une coupure du relais
-test(agent): couvrir le refus d'un manifeste mal signé
-ci: ajouter la mesure au repos sur les PR
-refactor(platform)!: regrouper les chemins Resolve par OS
+feat(blobs): prefer direct sources over the cache
+fix(tunnel): reopen the stream after a relay outage
+test(agent): cover the rejection of a badly signed manifest
+ci: add the idle measurement to PRs
+refactor(platform)!: group Resolve paths by OS
 ```
 
-Messages refusés : `update`, `wip`, `fix bug`, `corrections`, ou tout message sans type.
+Refused messages: `update`, `wip`, `fix bug`, `corrections`, `feat(agent): added the heartbeat`, or any message without a type.

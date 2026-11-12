@@ -1,6 +1,6 @@
 [package]
 name = "banc-blobs"
-description = "Empreintes BLAKE3, magasin local, transfert vérifié et choix des sources."
+description = "BLAKE3 hashes, local store, verified transfer and source selection."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

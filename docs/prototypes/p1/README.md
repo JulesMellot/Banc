@@ -1,39 +1,39 @@
-# P1. Chemins, Mapped Mount, préférences Media Storage
+# P1. Paths, Mapped Mount, Media Storage preferences
 
-Questions de la section 12 du plan :
+Questions from section 12 of the plan:
 
-1. Peut-on créer le volume Banc comme le prévoit la section 4 : volume APFS `/Volumes/Banc` sur Mac, lettre `B:` persistante sur Windows ?
-2. Un média importé sur Mac dans un projet est-il en ligne sur le PC grâce au Mapped Mount, sans relier à la main ? Et dans l'autre sens ?
-3. Dans quel fichier Resolve range-t-il Media Storage et Mapped Mount, sous quel format, et Banc peut-il y écrire ?
+1. Can the Banc volume be created as section 4 plans: APFS volume `/Volumes/Banc` on Mac, persistent `B:` letter on Windows?
+2. Is a clip imported on the Mac into a project online on the PC thanks to the Mapped Mount, without relinking by hand? And the other way round?
+3. In which file does Resolve store Media Storage and the Mapped Mount, in what format, and can Banc write to it?
 
-Il faut un Mac et un PC Windows avec la même version de Resolve Studio, et une clé USB ou un partage réseau pour passer les fichiers. Compter une demi-journée.
+You need a Mac and a Windows PC with the same version of Resolve Studio, and a USB stick or a network share to move files. Allow half a day.
 
-Les scripts sont dans `docs/prototypes/scripts/`. Lire d'abord son `README.md` (Python, réglage « External scripting »). Les commandes ci-dessous se lancent depuis ce dossier.
+The scripts are in `docs/prototypes/scripts/`. Read its `README.md` first (Python, "External scripting" setting). The commands below are run from that folder.
 
-## 1. Le volume sur Mac
+## 1. The volume on Mac
 
 ```bash
 diskutil apfs list
 ```
 
-Repérer le conteneur APFS du disque interne : celui qui contient le volume `Macintosh HD - Data`, souvent `disk3` sur Apple Silicon.
+Find the APFS container of the internal disk: the one holding the `Macintosh HD - Data` volume, often `disk3` on Apple Silicon.
 
 ```bash
 sudo diskutil apfs addVolume disk3 APFS Banc
 ```
 
-À observer et noter :
+Observe and record:
 
-- [ ] Le volume est monté sur `/Volumes/Banc` sans autre commande.
-- [ ] `touch /Volumes/Banc/essai` fonctionne sans `sudo`, avec le compte du monteur.
-- [ ] `diskutil info /Volumes/Banc` : noter les lignes « Owners » et « Mount Point ».
-- [ ] Après un redémarrage, le volume est remonté au même endroit avant l'ouverture de Resolve.
-- [ ] L'espace libre affiché est celui du disque interne (le volume partage le conteneur).
-- [ ] Le volume apparaît-il sur le bureau et dans le Finder ? Spotlight l'indexe-t-il (`mdutil -s /Volumes/Banc`) ?
+- [ ] The volume is mounted on `/Volumes/Banc` without any other command.
+- [ ] `touch /Volumes/Banc/test` works without `sudo`, with the editor's account.
+- [ ] `diskutil info /Volumes/Banc`: record the "Owners" and "Mount Point" lines.
+- [ ] After a restart, the volume is mounted again at the same place before Resolve opens.
+- [ ] The free space shown is that of the internal disk (the volume shares the container).
+- [ ] Does the volume appear on the desktop and in the Finder? Does Spotlight index it (`mdutil -s /Volumes/Banc`)?
 
-## 2. La lettre `B:` sur Windows
+## 2. The `B:` letter on Windows
 
-Dans PowerShell lancé en administrateur. Remplacer `D:\Banc` par `C:\Banc` s'il n'y a qu'un disque.
+In PowerShell run as administrator. Replace `D:\Banc` with `C:\Banc` if there is only one disk.
 
 ```powershell
 New-Item -ItemType Directory -Force D:\Banc
@@ -43,14 +43,14 @@ New-Item -ItemType Directory -Force D:\Banc
 reg add "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\DOS Devices" /v B: /t REG_SZ /d "\??\D:\Banc" /f
 ```
 
-Redémarrer le PC.
+Restart the PC.
 
-À observer et noter :
+Observe and record:
 
-- [ ] `B:` apparaît dans l'Explorateur, pour le compte du monteur.
-- [ ] Le monteur, sans droits d'administrateur, peut créer un fichier dans `B:\`.
-- [ ] L'espace libre affiché pour `B:` est celui de `D:`.
-- [ ] Un service système voit aussi `B:` (l'agent Banc sera un service). Test, en administrateur :
+- [ ] `B:` appears in Explorer, for the editor's account.
+- [ ] The editor, without administrator rights, can create a file in `B:\`.
+- [ ] The free space shown for `B:` is that of `D:`.
+- [ ] A system service also sees `B:` (the Banc agent will be a service). Test, as administrator:
 
   ```powershell
   schtasks /create /tn banc-p1 /tr "cmd /c dir B:\ > C:\banc-p1.txt" /sc once /st 23:59 /ru SYSTEM /f
@@ -60,108 +60,108 @@ Redémarrer le PC.
   schtasks /run /tn banc-p1
   ```
 
-  Lire `C:\banc-p1.txt`, puis supprimer la tâche : `schtasks /delete /tn banc-p1 /f`.
+  Read `C:\banc-p1.txt`, then delete the task: `schtasks /delete /tn banc-p1 /f`.
 
-## 3. Trouver le fichier des préférences
+## 3. Finding the preferences file
 
-Sur chaque poste, dans l'ordre. Fermer Resolve avant chaque photo : il écrit souvent ses préférences en quittant.
+On each workstation, in order. Close Resolve before each snapshot: it often writes its preferences when it quits.
 
 ```bash
-python3 preferences.py photo 0-depart
+python3 preferences.py snapshot 0-start
 ```
 
-1. Ouvrir Resolve. Préférences > Système > Media Storage : ajouter `/Volumes/Banc` (Mac) ou `B:\` (PC). Enregistrer, quitter Resolve.
+1. Open Resolve. Preferences > System > Media Storage: add `/Volumes/Banc` (Mac) or `B:\` (PC). Save, quit Resolve.
 
    ```bash
-   python3 preferences.py photo 1-volume
+   python3 preferences.py snapshot 1-volume
    ```
 
-2. Ouvrir Resolve. Dans la même liste, sur la ligne du volume Banc, renseigner la colonne Mapped Mount avec le chemin de l'autre OS : `B:\` sur le Mac, `/Volumes/Banc` sur le PC. Enregistrer, quitter.
+2. Open Resolve. In the same list, on the Banc volume's row, fill in the Mapped Mount column with the other OS's path: `B:\` on the Mac, `/Volumes/Banc` on the PC. Save, quit.
 
    ```bash
-   python3 preferences.py photo 2-mapped
+   python3 preferences.py snapshot 2-mapped
    ```
 
-3. Comparer :
+3. Compare:
 
    ```bash
-   python3 preferences.py ecarts 0-depart 1-volume
+   python3 preferences.py diff 0-start 1-volume
    ```
 
    ```bash
-   python3 preferences.py ecarts 1-volume 2-mapped
+   python3 preferences.py diff 1-volume 2-mapped
    ```
 
-Les photos sont écrites dans `docs/prototypes/p1/photos/`, que git ignore : elles peuvent contenir les identifiants des bases de projets. Ne recopier dans la réponse que l'extrait utile.
+Snapshots are written to `docs/prototypes/p1/snapshots/`, which git ignores: they may contain project database credentials. Copy only the useful excerpt into the answer.
 
-À noter :
+Record:
 
-- [ ] Le chemin exact du fichier modifié sur chaque OS, et s'il est propre à l'utilisateur ou commun au poste.
-- [ ] Son format (XML, texte, binaire) et l'extrait qui décrit le volume et son Mapped Mount.
-- [ ] D'autres fichiers modifiés en même temps.
-- [ ] La forme acceptée par l'interface : `B:`, `B:\` ou `B:/` ; `/Volumes/Banc` avec ou sans `/` final.
+- [ ] The exact path of the modified file on each OS, and whether it is per user or shared by the workstation.
+- [ ] Its format (XML, text, binary) and the excerpt that describes the volume and its Mapped Mount.
+- [ ] Other files modified at the same time.
+- [ ] The form the interface accepts: `B:`, `B:\` or `B:/`; `/Volumes/Banc` with or without a trailing `/`.
 
-## 4. Banc peut-il écrire ce fichier ?
+## 4. Can Banc write this file?
 
-1. Ouvrir Resolve, supprimer la ligne du volume Banc dans Media Storage, enregistrer, quitter.
-2. Réécrire le fichier depuis la photo qui contient le Mapped Mount, Resolve fermé. Le script refuse si Resolve tourne et garde une copie `.banc-<date>` à côté du fichier :
+1. Open Resolve, delete the Banc volume's row in Media Storage, save, quit.
+2. Rewrite the file from the snapshot that contains the Mapped Mount, with Resolve closed. The script refuses if Resolve is running and keeps a `.banc-<date>` copy next to the file:
 
    ```bash
-   python3 preferences.py remettre 2-mapped "<chemin du fichier, copié depuis la sortie de ecarts>"
+   python3 preferences.py restore 2-mapped "<file path, copied from the diff output>"
    ```
 
-   Sur Windows, si le fichier est sous `C:\ProgramData`, lancer la commande en administrateur et noter que c'était nécessaire.
-3. Ouvrir Resolve. La ligne du volume et son Mapped Mount sont-elles revenues ?
-4. Si le fichier est du texte : Resolve fermé, modifier le Mapped Mount à la main dans un éditeur (par exemple `B:\` devient `C:\`), rouvrir Resolve et vérifier qu'il affiche la nouvelle valeur. Remettre ensuite la bonne valeur.
+   On Windows, if the file is under `C:\ProgramData`, run the command as administrator and record that it was needed.
+3. Open Resolve. Are the volume's row and its Mapped Mount back?
+4. If the file is text: with Resolve closed, change the Mapped Mount by hand in an editor (for example `B:\` becomes `C:\`), reopen Resolve and check that it shows the new value. Then put the right value back.
 
-À noter :
+Record:
 
-- [ ] Resolve relit-il le fichier réécrit sans rien signaler ?
-- [ ] Le fichier porte-t-il une somme de contrôle, une version ou une signature qui empêcherait une modification ?
-- [ ] Faut-il des droits d'administrateur pour l'écrire ?
+- [ ] Does Resolve read the rewritten file without reporting anything?
+- [ ] Does the file carry a checksum, a version or a signature that would prevent a modification?
+- [ ] Are administrator rights needed to write it?
 
-## 5. Un média importé sur Mac, ouvert sur le PC
+## 5. A clip imported on the Mac, opened on the PC
 
-1. Sur le Mac, fabriquer deux clips de test, ou copier deux vrais rushes au même endroit :
+1. On the Mac, make two test clips, or copy two real rushes to the same place:
 
    ```bash
-   python3 medias_test.py /Volumes/Banc/P1/Rushes/J01/CamA --nombre 2 --sans-proxys
+   python3 test_media.py /Volumes/Banc/P1/Rushes/D01/CamA --count 2 --no-proxies
    ```
 
-2. Dans Resolve sur le Mac, créer le projet `P1` dans la bibliothèque locale, importer ces deux clips, les poser dans une timeline. Puis :
+2. In Resolve on the Mac, create the `P1` project in the local library, import these two clips, put them in a timeline. Then:
 
    ```bash
-   python3 inventaire.py --sortie ../p1/mac.json
+   python3 inventory.py --output ../p1/mac.json
    ```
 
-3. Fichier > Exporter le projet : `P1.drp`.
-4. Copier le dossier `/Volumes/Banc/P1` vers `B:\P1` sur le PC, avec la même arborescence, et copier `P1.drp`.
-5. Sur le PC, importer `P1.drp` dans la bibliothèque locale et l'ouvrir. Ne rien relier à la main.
+3. File > Export Project: `P1.drp`.
+4. Copy the `/Volumes/Banc/P1` folder to `B:\P1` on the PC, with the same tree, and copy `P1.drp`.
+5. On the PC, import `P1.drp` into the local library and open it. Do not relink anything by hand.
 
    ```bash
-   python inventaire.py --sortie ../p1/pc.json
+   python inventory.py --output ../p1/pc.json
    ```
 
-Si une bibliothèque partagée (PostgreSQL ou Project Server) existe déjà entre les deux postes, refaire l'essai avec elle au lieu du `.drp`, et noter si le résultat diffère.
+If a shared library (PostgreSQL or Project Server) already exists between the two workstations, repeat the test with it instead of the `.drp`, and record whether the result differs.
 
-À observer et noter :
+Observe and record:
 
-- [ ] Sur le PC, les clips sont-ils en ligne (pas de vignette rouge), et la timeline se lit-elle ?
-- [ ] Dans `pc.json`, le champ `File Path` des clips : `/Volumes/Banc/...` ou `B:\...` ? C'est le chemin que la consolidation lira (P5). `fichier_present_ici` vaut `true` seulement si l'API donne le chemin traduit.
-- [ ] Les clips restent-ils en ligne après avoir quitté Resolve et rouvert le projet sur le PC ?
-- [ ] Sans le Mapped Mount (le retirer, rouvrir le projet), les clips passent-ils hors ligne ? C'est la preuve que c'est bien lui qui fait le travail.
+- [ ] On the PC, are the clips online (no red thumbnail), and does the timeline play?
+- [ ] In `pc.json`, the clips' `File Path` field: `/Volumes/Banc/...` or `B:\...`? This is the path consolidation will read (P5). `file_present_here` is `true` only if the API returns the translated path.
+- [ ] Do the clips stay online after quitting Resolve and reopening the project on the PC?
+- [ ] Without the Mapped Mount (remove it, reopen the project), do the clips go offline? This proves that it is the Mapped Mount doing the work.
 
-## 6. Dans l'autre sens
+## 6. The other way round
 
-Sur le PC, importer un troisième clip placé dans `B:\P1\Rushes\J01\CamA`, l'ajouter à la timeline, exporter le `.drp`, le copier avec le clip sur le Mac, l'ouvrir.
+On the PC, import a third clip placed in `B:\P1\Rushes\D01\CamA`, add it to the timeline, export the `.drp`, copy it with the clip to the Mac, open it.
 
-- [ ] Le clip ajouté sur le PC est-il en ligne sur le Mac ?
-- [ ] `inventaire.py` sur le Mac : quel `File Path` pour ce clip ?
+- [ ] Is the clip added on the PC online on the Mac?
+- [ ] `inventory.py` on the Mac: which `File Path` for this clip?
 
-## Où noter la réponse
+## Where to record the answer
 
-Dans `docs/prototypes.md`, section « P1. Chemins », avec le modèle de réponse du fichier : date, version de Resolve, versions de macOS et Windows, réponse à chaque question, et ce que ça change dans le plan.
+In `docs/prototypes.md`, section "P1. Paths", using the answer template in that file: date, Resolve version, macOS and Windows versions, answer to each question, and what it changes in the plan.
 
-Ajouter dans `docs/prototypes/p1/` : `mac.json`, `pc.json`, l'extrait du fichier de préférences, et les captures d'écran utiles (Media Storage, clips en ligne ou hors ligne).
+Add to `docs/prototypes/p1/`: `mac.json`, `pc.json`, the excerpt of the preferences file, and the useful screenshots (Media Storage, clips online or offline).
 
-Mettre à jour la section 4 de `docs/PLAN.md` si une réponse contredit une hypothèse : commande de création du volume, valeur du registre, forme du Mapped Mount, fichier à écrire.
+Update section 4 of `docs/PLAN.md` if an answer contradicts an assumption: volume creation command, registry value, Mapped Mount form, file to write.

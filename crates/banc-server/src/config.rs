@@ -1,18 +1,18 @@
-//! Configuration du serveur, lue dans un fichier TOML.
+//! Server configuration, read from a TOML file.
 //!
-//! L'exemple commenté est dans `packaging/server/banc-server.toml`.
+//! The commented example is in `packaging/server/banc-server.toml`.
 
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
-/// Nom du fichier SQLite dans `data_dir`.
+/// Name of the SQLite file in `data_dir`.
 const DATABASE_FILE: &str = "banc.sqlite";
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
-    /// Dossier des données du serveur (base SQLite, puis cache des fichiers).
+    /// Server data folder (SQLite database, later the file cache).
     pub data_dir: PathBuf,
     #[serde(default)]
     pub logs: LogsConfig,
@@ -21,10 +21,10 @@ pub struct Config {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields, default)]
 pub struct LogsConfig {
-    /// Dossier des journaux. Absent : l'emplacement habituel de l'OS.
+    /// Log folder. When absent: the usual location for the OS.
     pub dir: Option<PathBuf>,
     pub level: LogLevel,
-    /// Nombre de jours de journaux gardés.
+    /// Number of days of logs kept.
     pub keep_days: u16,
 }
 
@@ -62,21 +62,21 @@ impl From<LogLevel> for tracing::Level {
 
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
-    #[error("impossible de lire la configuration {path}")]
+    #[error("cannot read the configuration {path}")]
     Read {
         path: PathBuf,
         #[source]
         source: std::io::Error,
     },
-    #[error("configuration illisible : {0}")]
+    #[error("unreadable configuration: {0}")]
     Parse(#[from] toml::de::Error),
-    #[error("configuration refusée : {0}")]
+    #[error("configuration refused: {0}")]
     Invalid(&'static str),
 }
 
 impl Config {
-    /// Lit et contrôle le fichier. Les chemins relatifs partent du dossier du
-    /// fichier de configuration.
+    /// Reads and checks the file. Relative paths start from the configuration
+    /// file's folder.
     pub fn load(path: &Path) -> Result<Self, ConfigError> {
         let text = std::fs::read_to_string(path).map_err(|source| ConfigError::Read {
             path: path.to_path_buf(),
@@ -89,19 +89,17 @@ impl Config {
         Self::parse(&text, base)
     }
 
-    /// Contrôle un texte TOML. `base` sert de départ aux chemins relatifs.
+    /// Checks a TOML text. `base` is the starting point for relative paths.
     pub fn parse(text: &str, base: &Path) -> Result<Self, ConfigError> {
         let mut config: Self = toml::from_str(text)?;
         if config.data_dir.as_os_str().is_empty() {
-            return Err(ConfigError::Invalid("data_dir est vide"));
+            return Err(ConfigError::Invalid("data_dir is empty"));
         }
         if config.logs.keep_days == 0 {
-            return Err(ConfigError::Invalid(
-                "logs.keep_days doit valoir au moins 1",
-            ));
+            return Err(ConfigError::Invalid("logs.keep_days must be at least 1"));
         }
         if matches!(&config.logs.dir, Some(dir) if dir.as_os_str().is_empty()) {
-            return Err(ConfigError::Invalid("logs.dir est vide"));
+            return Err(ConfigError::Invalid("logs.dir is empty"));
         }
         config.data_dir = base.join(&config.data_dir);
         config.logs.dir = config.logs.dir.map(|dir| base.join(dir));
@@ -122,7 +120,7 @@ mod tests {
     }
 
     #[test]
-    fn configuration_minimale() {
+    fn minimal_config() {
         let config = parse(r#"data_dir = "/var/lib/banc""#).unwrap();
         assert_eq!(config.data_dir, PathBuf::from("/var/lib/banc"));
         assert_eq!(config.logs, LogsConfig::default());
@@ -133,7 +131,7 @@ mod tests {
     }
 
     #[test]
-    fn configuration_complete() {
+    fn full_config() {
         let config = parse(
             r#"
             data_dir = "/var/lib/banc"
@@ -151,22 +149,22 @@ mod tests {
     }
 
     #[test]
-    fn chemins_relatifs_depuis_le_dossier_du_fichier() {
-        let config = parse("data_dir = \"donnees\"\n[logs]\ndir = \"journaux\"").unwrap();
-        assert_eq!(config.data_dir, PathBuf::from("/etc/banc/donnees"));
-        assert_eq!(config.logs.dir, Some(PathBuf::from("/etc/banc/journaux")));
+    fn relative_paths_from_the_file_folder() {
+        let config = parse("data_dir = \"data\"\n[logs]\ndir = \"logs\"").unwrap();
+        assert_eq!(config.data_dir, PathBuf::from("/etc/banc/data"));
+        assert_eq!(config.logs.dir, Some(PathBuf::from("/etc/banc/logs")));
     }
 
     #[test]
-    fn cle_inconnue_refusee() {
+    fn unknown_key_refused() {
         let err = parse("data_dir = \"/d\"\nport = 443").unwrap_err();
         assert!(matches!(err, ConfigError::Parse(_)), "{err:?}");
-        let err = parse("data_dir = \"/d\"\n[logs]\nnivo = \"info\"").unwrap_err();
+        let err = parse("data_dir = \"/d\"\n[logs]\nlvl = \"info\"").unwrap_err();
         assert!(matches!(err, ConfigError::Parse(_)), "{err:?}");
     }
 
     #[test]
-    fn data_dir_obligatoire() {
+    fn data_dir_required() {
         assert!(matches!(parse(""), Err(ConfigError::Parse(_))));
         assert!(matches!(
             parse(r#"data_dir = """#),
@@ -175,7 +173,7 @@ mod tests {
     }
 
     #[test]
-    fn valeurs_des_journaux_controlees() {
+    fn log_values_checked() {
         let invalid = |logs: &str| parse(&format!("data_dir = \"/d\"\n[logs]\n{logs}"));
         assert!(matches!(
             invalid("keep_days = 0"),
@@ -186,13 +184,13 @@ mod tests {
             Err(ConfigError::Invalid(_))
         ));
         assert!(matches!(
-            invalid(r#"level = "bavard""#),
+            invalid(r#"level = "chatty""#),
             Err(ConfigError::Parse(_))
         ));
     }
 
     #[test]
-    fn niveaux_de_journal() {
+    fn log_levels() {
         let level = |name: &str| {
             let text = format!("data_dir = \"/d\"\n[logs]\nlevel = \"{name}\"");
             tracing::Level::from(parse(&text).unwrap().logs.level)
@@ -205,16 +203,16 @@ mod tests {
     }
 
     #[test]
-    fn fichier_absent() {
-        let err = Config::load(Path::new("/chemin/absent/banc-server.toml")).unwrap_err();
+    fn missing_file() {
+        let err = Config::load(Path::new("/missing/path/banc-server.toml")).unwrap_err();
         assert!(matches!(err, ConfigError::Read { .. }), "{err:?}");
     }
 
     #[test]
-    fn exemples_du_depot_valides() {
+    fn repository_examples_are_valid() {
         let packaged = include_str!("../../../packaging/server/banc-server.toml");
         parse(packaged).unwrap();
-        let dev = include_str!("../../../dev/serveur.toml");
+        let dev = include_str!("../../../dev/server.toml");
         parse(dev).unwrap();
     }
 }

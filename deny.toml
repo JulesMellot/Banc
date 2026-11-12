@@ -1,7 +1,7 @@
-# Contrôles de `cargo deny check` (cargo xtask check deny).
+# Checks for `cargo deny check` (cargo xtask check deny).
 
 [graph]
-# Les cinq cibles livrées. Les dépendances des autres plateformes sont ignorées.
+# The five shipped targets. Dependencies of other platforms are ignored.
 targets = [
   "x86_64-unknown-linux-gnu",
   "aarch64-unknown-linux-gnu",
@@ -17,24 +17,24 @@ yanked = "deny"
 
 [licenses]
 version = 2
-# Banc est un outil interne, distribué en binaire sur les postes : seules des
-# licences permissives sont admises. Ajouter une licence ici est une décision
-# à prendre en revue, pas un réflexe.
+# Banc is an internal tool, shipped as binaries to the workstations: only
+# permissive licenses are allowed. Adding a license here is a decision to
+# make in review, not a reflex.
 allow = ["MIT", "Apache-2.0", "Unicode-3.0", "Zlib"]
 confidence-threshold = 0.9
 
 [licenses.private]
-# Les crates du workspace ne sont pas publiées.
+# The workspace crates are not published.
 ignore = true
 
 [bans]
 multiple-versions = "deny"
 wildcards = "deny"
 allow-wildcard-paths = true
-# OpenSSL complique la compilation croisée des cinq cibles : TLS passe par rustls.
+# OpenSSL complicates cross-compiling the five targets: TLS goes through rustls.
 deny = [
-  { crate = "openssl-sys", reason = "utiliser rustls" },
-  { crate = "native-tls", reason = "utiliser rustls" },
+  { crate = "openssl-sys", reason = "use rustls" },
+  { crate = "native-tls", reason = "use rustls" },
 ]
 
 [sources]

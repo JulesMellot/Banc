@@ -1,6 +1,6 @@
 [alias]
 xtask = "run --quiet --package xtask --"
 
-# Compilation croisée Linux arm64 depuis amd64 (paquet gcc-aarch64-linux-gnu).
+# Cross-compiling Linux arm64 from amd64 (gcc-aarch64-linux-gnu package).
 [target.aarch64-unknown-linux-gnu]
 linker = "aarch64-linux-gnu-gcc"

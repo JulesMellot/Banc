@@ -1,6 +1,6 @@
 [package]
 name = "banc-tunnel"
-description = "Tunnel TCP sur flux iroh, pour joindre le PostgreSQL de la collaboration."
+description = "TCP tunnel over iroh streams, to reach the collaboration PostgreSQL."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

@@ -1,4 +1,4 @@
-//! Lancement des outils externes.
+//! Running external tools.
 
 use std::io::Write;
 use std::path::PathBuf;
@@ -6,23 +6,23 @@ use std::process::Command;
 
 use anyhow::{bail, Context};
 
-/// Racine du dépôt.
+/// Repository root.
 pub fn root() -> anyhow::Result<PathBuf> {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let root = manifest
         .ancestors()
         .nth(2)
-        .context("racine du dépôt introuvable")?;
+        .context("repository root not found")?;
     Ok(root.to_path_buf())
 }
 
-/// Écrit une ligne sur la sortie d'erreur.
+/// Writes a line to standard error.
 pub fn say(message: &str) {
-    // Si la sortie d'erreur est fermée, il n'y a plus personne à prévenir.
+    // If standard error is closed, there is nobody left to tell.
     let _ = writeln!(std::io::stderr(), "{message}");
 }
 
-/// Commande pour un outil du PATH. Sous Windows, pnpm est un script `.cmd`.
+/// Command for a tool on the PATH. On Windows, pnpm is a `.cmd` script.
 pub fn tool(program: &str) -> Command {
     if cfg!(windows) && program == "pnpm" {
         Command::new("pnpm.cmd")
@@ -49,32 +49,32 @@ fn describe(command: &Command) -> String {
 fn spawn_error(command: &Command, error: std::io::Error) -> anyhow::Error {
     let program = command.get_program().to_string_lossy().into_owned();
     if error.kind() == std::io::ErrorKind::NotFound {
-        anyhow::anyhow!("outil introuvable : {program} (voir docs/developpement.md)")
+        anyhow::anyhow!("tool not found: {program} (see docs/development.md)")
     } else {
-        anyhow::Error::new(error).context(format!("lancement de {program}"))
+        anyhow::Error::new(error).context(format!("starting {program}"))
     }
 }
 
-/// Lance la commande et échoue si elle échoue.
+/// Runs the command and fails if it fails.
 pub fn run(command: &mut Command) -> anyhow::Result<()> {
     say(&format!("$ {}", describe(command)));
     let status = command.status().map_err(|e| spawn_error(command, e))?;
     if !status.success() {
-        bail!("échec de `{}` ({status})", describe(command));
+        bail!("`{}` failed ({status})", describe(command));
     }
     Ok(())
 }
 
-/// Lance la commande et renvoie sa sortie standard.
+/// Runs the command and returns its standard output.
 pub fn output(command: &mut Command) -> anyhow::Result<String> {
     let output = command.output().map_err(|e| spawn_error(command, e))?;
     if !output.status.success() {
         bail!(
-            "échec de `{}` ({}) : {}",
+            "`{}` failed ({}): {}",
             describe(command),
             output.status,
             String::from_utf8_lossy(&output.stderr).trim()
         );
     }
-    String::from_utf8(output.stdout).context("sortie qui n'est pas en UTF-8")
+    String::from_utf8(output.stdout).context("output is not UTF-8")
 }

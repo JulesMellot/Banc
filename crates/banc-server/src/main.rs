@@ -1,7 +1,7 @@
-//! Serveur de Banc.
+//! Banc server.
 //!
-//! Phase 0 : le serveur lit sa configuration, ouvre ses journaux et sa base,
-//! puis attend l'arrêt. L'API arrive en phase 1.
+//! Phase 0: the server reads its configuration, opens its logs and its
+//! database, then waits for shutdown. The API arrives in phase 1.
 
 mod args;
 
@@ -21,18 +21,18 @@ fn main() -> ExitCode {
     match run() {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            // Les journaux ne sont pas forcément ouverts : l'erreur va aussi
-            // sur la sortie d'erreur, lue par le gestionnaire de services.
-            tracing::error!("arrêt sur erreur : {error:#}");
-            let _ = writeln!(std::io::stderr(), "{NAME} : {error:#}");
+            // The logs are not necessarily open: the error also goes to
+            // standard error, which the service manager reads.
+            tracing::error!("stopped on error: {error:#}");
+            let _ = writeln!(std::io::stderr(), "{NAME}: {error:#}");
             ExitCode::FAILURE
         }
     }
 }
 
 fn run() -> anyhow::Result<()> {
-    // `lexopt` répète le message dans la cause de l'erreur : on ne garde
-    // que le texte.
+    // `lexopt` repeats the message in the error's cause: keep only the
+    // text.
     let command = args::parse(lexopt::Parser::from_env()).map_err(|e| anyhow::anyhow!("{e}"))?;
     let options = match command {
         args::Command::Run(options) => options,
@@ -53,19 +53,19 @@ fn run() -> anyhow::Result<()> {
 
     let database = config.database_path();
     let conn = db::open(&database)
-        .with_context(|| format!("ouverture de la base {}", database.display()))?;
-    tracing::info!(version = VERSION, base = %database.display(), "serveur démarré");
+        .with_context(|| format!("opening the database {}", database.display()))?;
+    tracing::info!(version = VERSION, database = %database.display(), "server started");
 
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
-        .context("démarrage du runtime")?;
+        .context("starting the runtime")?;
     runtime
         .block_on(banc_platform::signal::shutdown())
-        .context("attente du signal d'arrêt")?;
+        .context("waiting for the shutdown signal")?;
 
     drop(conn);
-    tracing::info!("serveur arrêté");
+    tracing::info!("server stopped");
     Ok(())
 }
 

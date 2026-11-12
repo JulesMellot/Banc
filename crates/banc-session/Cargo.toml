@@ -1,6 +1,6 @@
 [package]
 name = "banc-session"
-description = "Assistant de session de Banc : icône de la barre système et pont Resolve."
+description = "Banc session helper: system tray icon and Resolve bridge."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

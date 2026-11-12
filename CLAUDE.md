@@ -1,113 +1,114 @@
 # Banc
 
-Banc (nom de travail) prépare les postes DaVinci Resolve d'une équipe de montage. Un serveur central sur un VPS décrit ce que chaque poste doit avoir. Un agent installé sur chaque machine (Mac, Windows, Linux) vérifie le poste, installe ce qui manque, récupère les proxys à la demande, ouvre les projets (en réservation ou en collaboration Resolve) et envoie les rendus vers une machine dédiée. Un NAS sert de dépôt permanent des fichiers.
+Banc (working name) sets up the DaVinci Resolve workstations of an editing team. A central server on a VPS describes what each workstation must have. An agent installed on each machine (Mac, Windows, Linux) checks the workstation, installs what is missing, fetches proxies on demand, opens projects (in reservation mode or in Resolve collaboration) and sends renders to a dedicated machine. A NAS acts as the permanent depot for files.
 
-Le plan complet, phase par phase, est dans `docs/PLAN.md`. Lis-le avant toute tâche. Travaille une phase à la fois et ne passe à la suivante que lorsque ses critères d'acceptation passent.
+The full plan, phase by phase, is in `docs/PLAN.md`. Read it before any task. Work on one phase at a time and only move to the next when its acceptance criteria pass.
 
-## Principes non négociables
+## Non-negotiable principles
 
-- L'utilisateur installe une application, colle une URL et une clé (ou clique sur un lien d'invitation), et c'est fini. Toute fonctionnalité qui demande une manipulation manuelle de plus doit être signalée avant d'être codée.
-- Pas de VPN. Les machines s'identifient par leur clé publique iroh et se connectent en sortie. Aucun port entrant sur les postes ni sur le NAS. Le VPS n'expose que le 443 (API + relais iroh).
-- Pair-à-pair d'abord. Un fichier se prend chez une machine joignable en direct (poste ou dépôt) avant le cache ou le relais du VPS. Le VPS coordonne, il ne transporte les médias qu'en secours.
-- Consommation minimale, mesurée et tenue :
-  - service agent au repos : moins de 15 Mo de RAM, CPU à 0 % hors action en cours ;
-  - assistant de session (icône de la barre système) : moins de 10 Mo ;
-  - fenêtre d'interface : lancée au clic, processus terminé à la fermeture ;
-  - serveur : doit tourner sur un VPS à 2 Go de RAM avec PostgreSQL à côté.
-- Aucune activité quand Resolve est fermé, hors action demandée et transferts en cours. Pendant que Resolve est ouvert sur un projet Banc, une surveillance légère est admise : consolidation, médias modifiés, file de rendu, génération de proxys. Le tableau de la section 10 du plan fait foi.
-- Tout ce qui entre dans un projet est publié, quelle que soit la façon dont c'est entré. Banc rattrape derrière l'utilisateur au lieu de lui imposer une marche à suivre.
-- Le VPS ne peut rien faire exécuter aux postes. Le manifeste est signé par la clé admin, gardée sur le poste de l'admin. L'agent refuse tout manifeste, paquet ou mise à jour non signé. Ne jamais ajouter de chemin par lequel le serveur déclenche une commande sur un poste sans signature.
-- Banc ne supprime jamais un fichier publié sans action de l'admin, et ne libère jamais un fichier local que le dépôt n'a pas confirmé.
-- Pas de disque virtuel, pas d'extension noyau, pas de FUSE. Le volume Banc est un vrai volume local (APFS sur Mac, lettre de lecteur sur Windows, point de montage sur Linux).
-- Outil interne : machines de la société, monteurs salariés, Resolve Studio partout. Pas de mode invité.
+- The user installs an application, pastes a URL and a key (or clicks an invitation link), and that's it. Any feature that requires one more manual step must be flagged before it is coded.
+- No VPN. Machines identify themselves by their iroh public key and connect outbound. No inbound port on workstations or on the NAS. The VPS only exposes 443 (API + iroh relay).
+- Peer-to-peer first. A file is fetched from a directly reachable machine (workstation or depot) before the VPS cache or relay. The VPS coordinates; it only carries media as a fallback.
+- Minimal, measured and maintained resource usage:
+  - agent service at rest: under 15 MB of RAM, CPU at 0% outside an ongoing action;
+  - session helper (system tray icon): under 10 MB;
+  - interface window: started on click, process ended when it closes;
+  - server: must run on a VPS with 2 GB of RAM with PostgreSQL alongside.
+- No activity while Resolve is closed, apart from requested actions and transfers in progress. While Resolve is open on a Banc project, light monitoring is allowed: consolidation, modified media, render queue, proxy generation. The table in section 10 of the plan is authoritative.
+- Everything that enters a project is published, however it got there. Banc catches up behind the user instead of imposing a procedure on them.
+- The VPS cannot make workstations run anything. The manifest is signed with the admin key, kept on the admin's workstation. The agent refuses any unsigned manifest, package or update. Never add a path through which the server triggers a command on a workstation without a signature.
+- Banc never deletes a published file without an admin action, and never frees a local file that the depot has not confirmed.
+- No virtual disk, no kernel extension, no FUSE. The Banc volume is a real local volume (APFS on Mac, drive letter on Windows, mount point on Linux).
+- Internal tool: company machines, salaried editors, Resolve Studio everywhere. No guest mode.
 
 ## Stack
 
-- Rust stable, édition 2021, workspace Cargo.
-- Runtime : Tokio. L'agent utilise un runtime `current_thread`.
-- Réseau pair-à-pair : `iroh` 1.x (connexion par clé publique, traversée de NAT, relais). Relais auto-hébergé sur le VPS avec `iroh-relay`.
-- Transfert de fichiers : `iroh-blobs` si sa version est stable au démarrage, sinon un protocole maison sur flux iroh avec BLAKE3 et vérification au fil de l'eau (`bao-tree`). Décision à noter ici en phase 3.
-- Serveur HTTP : `axum`. Base : SQLite via `rusqlite` (feature `bundled`) et `rusqlite_migration`.
-- Interface : Tauri 2, frontend Svelte + TypeScript. Icône de barre système native avec `tray-icon` + `tao`, sans vue web.
-- Services système : crate `service-manager` (launchd, service Windows, systemd).
-- Secrets : crate `keyring`. Signatures : `ed25519-dalek`. Mise à jour : `self-replace`.
-- Logs : `tracing` + `tracing-appender` avec rotation.
-- Pont Resolve : scripts Python embarqués, lancés par l'assistant de session uniquement quand il faut parler à Resolve.
+- Stable Rust, 2021 edition, Cargo workspace.
+- Runtime: Tokio. The agent uses a `current_thread` runtime.
+- Peer-to-peer networking: `iroh` 1.x (connection by public key, NAT traversal, relay). Self-hosted relay on the VPS with `iroh-relay`.
+- File transfer: `iroh-blobs` if its version is stable at the start, otherwise an in-house protocol over iroh streams with BLAKE3 and streaming verification (`bao-tree`). Decision to be recorded here in phase 3.
+- HTTP server: `axum`. Database: SQLite through `rusqlite` (`bundled` feature) and `rusqlite_migration`.
+- Interface: Tauri 2, Svelte + TypeScript frontend. Native system tray icon with `tray-icon` + `tao`, no web view.
+- System services: `service-manager` crate (launchd, Windows service, systemd).
+- Secrets: `keyring` crate. Signatures: `ed25519-dalek`. Updates: `self-replace`.
+- Logs: `tracing` + `tracing-appender` with rotation.
+- Resolve bridge: embedded Python scripts, run by the session helper only when it needs to talk to Resolve.
 
 ## Workspace
 
 ```
 crates/
-  banc-proto/       messages et types partagés (serde)
-  banc-platform/    tout le code spécifique OS (chemins, services, élévation, polices)
-  banc-blobs/       empreintes, magasin local, transfert, choix des sources
-  banc-resolve/     détection de version, appel des scripts Python, faux pour les tests
-  banc-tunnel/      tunnel TCP sur iroh (PostgreSQL)
-  banc-agent/       binaire : service système (installations, transferts, tunnel)
-  banc-session/     binaire : icône barre système + pont Resolve, dans la session utilisateur
-  banc-server/      binaire : API, admin, relais iroh, cache, file de rendu
-ui/                 application Tauri (fenêtre utilisateur) et admin web (même frontend)
-resolve-scripts/    scripts Python embarqués
-migrations/         SQL du serveur
-dev/                configuration de développement
-packaging/          pkg, msi, deb/rpm, image Docker (serveur et dépôt NAS)
-docs/               PLAN.md et notes techniques
+  banc-proto/       shared messages and types (serde)
+  banc-platform/    all OS-specific code (paths, services, elevation, fonts)
+  banc-blobs/       hashes, local store, transfer, source selection
+  banc-resolve/     version detection, Python script calls, fake for tests
+  banc-tunnel/      TCP tunnel over iroh (PostgreSQL)
+  banc-agent/       binary: system service (installs, transfers, tunnel)
+  banc-session/     binary: system tray icon + Resolve bridge, in the user session
+  banc-server/      binary: API, admin, iroh relay, cache, render queue
+ui/                 Tauri application (user window) and web admin (same frontend)
+resolve-scripts/    embedded Python scripts
+migrations/         server SQL
+dev/                development configuration
+packaging/          pkg, msi, deb/rpm, Docker image (server and NAS depot)
+docs/               PLAN.md and technical notes
 ```
 
-## Commandes
+## Commands
 
-Le détail, avec les outils à installer, est dans `docs/developpement.md`.
+Details, with the tools to install, are in `docs/development.md`.
 
-- `cargo xtask check` : les mêmes contrôles que la CI à chaque push. Étapes : `fmt`, `architecture`, `clippy`, `tests`, `migrations`, `frontend`, `python`, `deny`, `secrets`, `commits`. `cargo xtask check clippy tests` ne lance que les étapes citées.
+- `cargo xtask check`: the same checks as CI on every push. Steps: `fmt`, `architecture`, `clippy`, `tests`, `migrations`, `frontend`, `python`, `deny`, `secrets`, `commits`. `cargo xtask check clippy tests` only runs the steps listed.
 - `cargo xtask dev-server`, `cargo xtask dev-agent`, `cargo xtask dev-ui`
-- `cargo nextest run --workspace` pour les tests seuls
-- `cargo xtask schema` après l'ajout d'une migration, puis relire le diff de `migrations/schema.sql`
-- `cargo xtask dist` : binaires release de la machine dans `dist/<cible>/`, `--target <cible>` pour une autre cible. Les installeurs arrivent en phase 7.
-- `cargo xtask idle-bench` : mémoire et CPU de l'agent au repos, sous Linux
-- `cargo xtask hooks` : active le crochet `commit-msg`
+- `cargo nextest run --workspace` for the tests alone
+- `cargo xtask schema` after adding a migration, then review the diff of `migrations/schema.sql`
+- `cargo xtask dist`: release binaries for the current machine in `dist/<target>/`, `--target <target>` for another target. Installers arrive in phase 7.
+- `cargo xtask idle-bench`: agent memory and CPU at rest, on Linux
+- `cargo xtask hooks`: enables the `commit-msg` hook
 
-## État et décisions
+## Status and decisions
 
-Phase 0 terminée. Les trois binaires démarrent, ouvrent leurs journaux et attendent l'arrêt. Aucune fonctionnalité du produit n'existe encore.
+Phase 0 is done. The three binaries start, open their logs and wait for shutdown. No product feature exists yet.
 
-- **Chaîne Rust figée** dans `rust-toolchain.toml`, pour que clippy ne change pas d'avis entre deux exécutions. Dependabot propose les montées de version.
-- **Versions des dépendances** déclarées une seule fois, dans `[workspace.dependencies]` du `Cargo.toml` racine.
-- **Ligne de commande** des trois binaires avec `lexopt`, pas `clap` : l'agent compte ses octets. `clap` reste réservé à `xtask`.
-- **Journaux** : `banc_platform::logging`, un fichier par jour. La file d'écriture est limitée à 1 024 lignes, la valeur par défaut coûtait 4 Mo au repos.
-- **`tracing` sans la macro `#[instrument]`** : elle tire une seconde version de `syn`, que `cargo deny` refuse.
-- **Migrations** : fichiers `migrations/NNNN_nom.sql`, embarqués dans `banc-server`. `migrations/schema.sql` garde le schéma obtenu et la CI le compare. Le dossier est vide jusqu'à la phase 1.
-- **Configuration du serveur** : `banc_server::config`, exemple commenté dans `packaging/server/banc-server.toml`. Une clé inconnue est refusée.
-- **Fenêtre Tauri** : pas encore de crate `ui/src-tauri`. Elle demanderait webkit2gtk dans tous les jobs Linux de la CI sans rien apporter avant la phase 1. `ui/` contient le frontend Svelte seul.
-- **TypeScript 6** : `svelte-check` et `typescript-eslint` n'acceptent pas encore la version 7.
-- **Portée des commits** facultative pour les types `docs`, `build`, `ci` et `chore`. Ligne `Refs:` obligatoire. Commits de Dependabot dispensés.
-- **Textes de l'interface** dans `ui/src/lib/i18n/fr.json`, lus par `t('cle')`.
-- **Scripts Python** : syntaxe Python 3.7 tant que le prototype P10 n'a pas répondu.
-- **Protection de `main`** : `.github/rulesets/main.json`, à importer dans GitHub. Voir `docs/ci.md`.
+- **Rust toolchain pinned** in `rust-toolchain.toml`, so that clippy does not change its mind between two runs. Dependabot proposes version bumps.
+- **Dependency versions** declared once, in `[workspace.dependencies]` of the root `Cargo.toml`.
+- **Command line** of the three binaries with `lexopt`, not `clap`: the agent counts its bytes. `clap` is reserved for `xtask`.
+- **Logs**: `banc_platform::logging`, one file per day. The write queue is limited to 1,024 lines; the default cost 4 MB at rest.
+- **`tracing` without the `#[instrument]` macro**: it pulls in a second version of `syn`, which `cargo deny` refuses.
+- **Migrations**: `migrations/NNNN_name.sql` files, embedded in `banc-server`. `migrations/schema.sql` keeps the resulting schema and CI compares it. The folder is empty until phase 1.
+- **Server configuration**: `banc_server::config`, commented example in `packaging/server/banc-server.toml`. An unknown key is refused.
+- **Tauri window**: no `ui/src-tauri` crate yet. It would require webkit2gtk in every Linux CI job without bringing anything before phase 1. `ui/` contains the Svelte frontend alone.
+- **TypeScript 6**: `svelte-check` and `typescript-eslint` do not accept version 7 yet.
+- **Commit scope** optional for the `docs`, `build`, `ci` and `chore` types. `Refs:` line required. Dependabot commits exempt.
+- **Interface text** in `ui/src/lib/i18n/fr.json`, read through `t('key')`.
+- **Python scripts**: Python 3.7 syntax until prototype P10 has answered.
+- **Protection of `main`**: `.github/rulesets/main.json`, to be imported into GitHub. Required checks: `PR ready` and `PR title`. See `docs/ci.md`.
+- **Languages**: everything in English, except the values in `ui/src/lib/i18n/fr.json`, which are the French interface text. The keys of that file are in English.
 
-## Commits et CI
+## Commits and CI
 
-Le détail est dans la section 15 de `docs/PLAN.md`. À respecter à chaque fois :
+Details are in section 15 of `docs/PLAN.md`. To be followed every time:
 
-- Lance `cargo xtask check` avant chaque commit. Ne crée pas de commit s'il échoue, et ne contourne jamais un contrôle (`--no-verify`, `#[allow]` ajouté pour faire taire clippy, test désactivé).
-- Messages au format `type(portée): description`, description en français à l'infinitif, 72 caractères au plus. Types : `feat`, `fix`, `refactor`, `perf`, `test`, `docs`, `build`, `ci`, `chore`. Portées : `server`, `agent`, `session`, `blobs`, `tunnel`, `resolve`, `platform`, `proto`, `ui`, `scripts`, `packaging`, `ci`, `docs`.
-- Un commit fait une seule chose. Le pied de message cite la phase et le prototype (`Refs: phase 3, P5`).
-- Jamais de push direct sur `main`. Une branche `type/sujet-court` par tâche, puis une PR dont le titre suit la même convention.
-- Une PR n'est prête que lorsque tous les contrôles sont verts. Si un contrôle échoue, corrige la cause.
-- Tout nouveau comportement arrive avec ses tests dans la même PR.
+- Run `cargo xtask check` before every commit. Do not create a commit if it fails, and never bypass a check (`--no-verify`, an `#[allow]` added to silence clippy, a disabled test).
+- Messages in the `type(scope): description` format, description in English starting with a verb in the imperative mood, 72 characters at most. Types: `feat`, `fix`, `refactor`, `perf`, `test`, `docs`, `build`, `ci`, `chore`. Scopes: `server`, `agent`, `session`, `blobs`, `tunnel`, `resolve`, `platform`, `proto`, `ui`, `scripts`, `packaging`, `ci`, `docs`.
+- A commit does one thing. The message footer cites the phase and the prototype (`Refs: phase 3, P5`).
+- Never push directly to `main`. One `type/short-topic` branch per task, then a PR whose title follows the same convention.
+- A PR is only ready when all checks are green. If a check fails, fix the cause.
+- Every new behavior comes with its tests in the same PR.
 
-## Règles de code
+## Code rules
 
-- Tout ce qui dépend de l'OS vit dans `banc-platform`, avec `#[cfg(target_os = ...)]` regroupés par module. Aucun `cfg` d'OS ailleurs.
-- Pas de `unwrap()` ni `expect()` hors tests et démarrage. Erreurs avec `thiserror` dans les bibliothèques, `anyhow` dans les binaires.
-- Toute action qui modifie le poste écrit une ligne dans le journal local et remonte au serveur.
-- Un fichier téléchargé est vérifié par son empreinte BLAKE3 avant d'être déplacé à sa place ou exécuté. Un fichier qui ne correspond pas est supprimé.
-- Les secrets vont dans le trousseau de l'OS, jamais dans un fichier en clair.
-- Les messages visibles sont en français, dans un fichier de traduction.
-- Chaque fonction qui compare un état local à un manifeste ou à une liste de fichiers a des tests. C'est le cœur du produit.
-- Toute écriture dans un fichier privé de Resolve (préférences, liste des bibliothèques) passe par `banc-resolve`, se fait Resolve fermé, garde une copie de sauvegarde, et vérifie d'abord que le format est celui attendu. Si le format a changé, ne rien écrire et passer en mode guidé.
-- Avant de coder une fonction qui dépend d'un comportement de Resolve, vérifie que le prototype correspondant de la section 12 du plan a une réponse dans `docs/prototypes.md`.
-- Mesure la mémoire et le CPU au repos à la fin de chaque phase (`cargo xtask idle-bench`) et note le résultat dans `docs/mesures.md`.
+- Everything that depends on the OS lives in `banc-platform`, with `#[cfg(target_os = ...)]` grouped by module. No OS `cfg` anywhere else.
+- No `unwrap()` or `expect()` outside tests and startup. Errors with `thiserror` in libraries, `anyhow` in binaries.
+- Every action that modifies the workstation writes a line to the local log and reports to the server.
+- A downloaded file is verified by its BLAKE3 hash before it is moved into place or executed. A file that does not match is deleted.
+- Secrets go into the OS keychain, never into a plain-text file.
+- Interface text is in French, in `ui/src/lib/i18n/fr.json`. Everything else (code, comments, logs, errors, command-line help, tests, docs, commits) is in English.
+- Every function that compares a local state with a manifest or a file list has tests. This is the heart of the product.
+- Every write to a private Resolve file (preferences, library list) goes through `banc-resolve`, happens with Resolve closed, keeps a backup copy, and first checks that the format is the expected one. If the format has changed, write nothing and switch to guided mode.
+- Before coding a function that depends on a Resolve behavior, check that the matching prototype in section 12 of the plan has an answer in `docs/prototypes.md`.
+- Measure memory and CPU at rest at the end of each phase (`cargo xtask idle-bench`) and record the result in `docs/measurements.md`.
 
-## Ce qui ne se teste pas en CI
+## What cannot be tested in CI
 
-Resolve n'existe pas en CI. `banc-resolve` fournit un faux utilisé par les tests. Les tests réels se font à la main sur une machine avec Resolve Studio, avec la checklist de chaque phase dans `docs/PLAN.md`.
+Resolve does not exist in CI. `banc-resolve` provides a fake used by the tests. Real tests are done by hand on a machine with Resolve Studio, using each phase's checklist in `docs/PLAN.md`.

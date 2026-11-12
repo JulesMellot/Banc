@@ -1,8 +1,0 @@
-# Configuration de développement, utilisée par `cargo xtask dev-server`.
-# Tout s'écrit dans .dev/, ignoré par git.
-data_dir = "../.dev/serveur"
-
-[logs]
-dir = "../.dev/journaux"
-level = "debug"
-keep_days = 3

@@ -1,6 +1,6 @@
-# Contrôles rapides, sur Linux, à chaque push sur toute branche.
-# Chaque job appelle `cargo xtask check <étape>` : la définition des contrôles
-# est dans crates/xtask, la même en local et ici. pr.yml réutilise ce fichier.
+# Fast checks, on Linux, on every push to any branch.
+# Each job calls `cargo xtask check <step>`: the checks are defined in
+# crates/xtask, the same locally and here. pr.yml reuses this file.
 name: CI
 
 on:
@@ -43,7 +43,7 @@ jobs:
       - run: cargo xtask check frontend
 
   python:
-    name: Scripts Python (ruff, compilation)
+    name: Python scripts (ruff, compilation)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -62,16 +62,16 @@ jobs:
           tool: cargo-deny@0.20.2
       - run: cargo xtask check deny
 
-  depot:
-    name: Secrets et messages de commit
+  history:
+    name: Secrets and commit messages
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
         with:
-          # Tout l'historique : les deux contrôles portent sur origin/main..HEAD.
+          # Full history: both checks cover origin/main..HEAD.
           fetch-depth: 0
       - uses: ./.github/actions/rust
-      - name: Installer gitleaks
+      - name: Install gitleaks
         run: |
           go install github.com/zricethezav/gitleaks/v8@v8.30.1
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"

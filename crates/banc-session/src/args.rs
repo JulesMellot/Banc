@@ -1,17 +1,17 @@
-//! Options de la ligne de commande.
+//! Command-line options.
 
 use std::path::PathBuf;
 
 pub const HELP: &str = "\
-banc-session : assistant de session de Banc
+banc-session: Banc session helper
 
-Usage : banc-session [options]
+Usage: banc-session [options]
 
-Options :
-  --log-dir <dossier>  écrit les journaux dans ce dossier
-  --stderr             recopie les journaux sur la sortie d'erreur
-  --version            affiche la version
-  --help               affiche cette aide
+Options:
+  --log-dir <dir>  write the logs to this folder
+  --stderr         also copy the logs to standard error
+  --version        print the version
+  --help           print this help
 ";
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -52,29 +52,29 @@ mod tests {
     }
 
     #[test]
-    fn sans_option() {
+    fn no_option() {
         assert_eq!(parse_args(&[]).unwrap(), Command::Run(Options::default()));
     }
 
     #[test]
-    fn dossier_des_journaux_et_sortie_d_erreur() {
-        let command = parse_args(&["--log-dir", "/tmp/journaux", "--stderr"]).unwrap();
+    fn log_dir_and_stderr() {
+        let command = parse_args(&["--log-dir", "/tmp/logs", "--stderr"]).unwrap();
         let expected = Options {
-            log_dir: Some(PathBuf::from("/tmp/journaux")),
+            log_dir: Some(PathBuf::from("/tmp/logs")),
             stderr: true,
         };
         assert_eq!(command, Command::Run(expected));
     }
 
     #[test]
-    fn version_et_aide() {
+    fn version_and_help() {
         assert_eq!(parse_args(&["--version"]).unwrap(), Command::Version);
         assert_eq!(parse_args(&["--help"]).unwrap(), Command::Help);
     }
 
     #[test]
-    fn option_inconnue_refusee() {
-        assert!(parse_args(&["--inconnue"]).is_err());
+    fn unknown_option_refused() {
+        assert!(parse_args(&["--unknown"]).is_err());
         assert!(parse_args(&["argument"]).is_err());
         assert!(parse_args(&["--log-dir"]).is_err());
     }
