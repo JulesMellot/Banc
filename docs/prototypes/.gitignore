@@ -1,0 +1,4 @@
+# Les photos des préférences de Resolve peuvent contenir des identifiants de
+# bases de projets. On ne versionne que l'extrait utile, recopié à la main.
+photos/
+__pycache__/

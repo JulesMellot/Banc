@@ -4,10 +4,12 @@ The prototypes are described in section 12 of `docs/PLAN.md`. Each answer is rec
 
 Rule from `CLAUDE.md`: no function that depends on a Resolve behavior is coded until its prototype has an answer below. If an answer contradicts an assumption of the plan, the plan is corrected in the same commit.
 
+The procedures are in `docs/prototypes/pN/README.md`, the shared scripts in `docs/prototypes/scripts/`.
+
 | Prototype | Question | Status |
 |---|---|---|
-| P1 | Paths, Mapped Mount, Media Storage preferences | unanswered |
-| P2 | Proxies without originals | unanswered |
+| P1 | Paths, Mapped Mount, Media Storage preferences | procedure ready: [`prototypes/p1`](prototypes/p1/README.md) |
+| P2 | Proxies without originals | procedure ready: [`prototypes/p2`](prototypes/p2/README.md) |
 | P3 | Shared library, `.resolvedbkey` key, `SetCurrentDatabase` | unanswered |
 | P4 | Remote collaboration, acceptable latency | unanswered |
 | P5 | Consolidation, `ReplaceClip`, locked bin, 10,000 clips | unanswered |
