@@ -8,3 +8,4 @@ __pycache__/
 .DS_Store
 /ui/src-tauri/target/
 /ui/src-tauri/gen/
+/ui/src-tauri/binaries/

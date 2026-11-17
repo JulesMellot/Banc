@@ -62,6 +62,10 @@ enum Command {
         #[arg(long = "target")]
         targets: Vec<String>,
     },
+    /// Bundles the window with the agent and the session helper, for a test machine
+    BundleApp,
+    /// Runs the window in development (with `cargo xtask dev-ui` and `dev-agent`)
+    DevApp,
     /// Measures the agent and the session helper at rest (Linux)
     IdleBench {
         /// Measurement duration
@@ -132,6 +136,14 @@ fn execute() -> anyhow::Result<()> {
             run(dev.arg("dev").current_dir(&ui))
         }
         Command::Dist { targets } => dist::dist(&root, &targets),
+        Command::BundleApp => dist::bundle_app(&root),
+        Command::DevApp => {
+            let mut command = cmd::cargo(&["run"]);
+            command
+                .env("BANC_AGENT_SOCKET", root.join(DEV_AGENT_SOCKET))
+                .env("BANC_AGENT_BIN", root.join("target/debug/banc-agent"));
+            run(command.current_dir(root.join("ui/src-tauri")))
+        }
         Command::IdleBench { seconds } => bench::idle_bench(&root, seconds),
     }
 }

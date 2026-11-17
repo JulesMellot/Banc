@@ -3,6 +3,7 @@
   "productName": "Banc",
   "version": "0.0.0",
   "identifier": "com.banc.app",
+  "mainBinaryName": "banc-app",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173"

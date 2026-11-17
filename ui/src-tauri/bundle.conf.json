@@ -1,0 +1,15 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "active": true,
+    "targets": ["app", "dmg", "nsis", "deb", "appimage"],
+    "externalBin": ["binaries/banc-agent", "binaries/banc-session"],
+    "category": "Video",
+    "shortDescription": "Les postes DaVinci Resolve de l'équipe, prêts à monter.",
+    "windows": {
+      "nsis": {
+        "installMode": "perMachine"
+      }
+    }
+  }
+}
