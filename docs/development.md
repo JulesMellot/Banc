@@ -25,9 +25,9 @@ To build the Linux arm64 target from an amd64 machine, you also need `gcc-aarch6
 | `cargo xtask check clippy tests` | Only the steps listed |
 | `cargo xtask hooks` | Enables the repository's `commit-msg` hook |
 | `cargo xtask schema` | Rewrites `migrations/schema.sql` after adding a migration |
-| `cargo xtask dev-server` | Server with `dev/server.toml`, data in `.dev/` |
+| `cargo xtask dev-server` | Server with `dev/server.toml`, data in `.dev/`, web admin on http://localhost:8080 |
 | `cargo xtask dev-agent` | Agent in the foreground, logs in `.dev/logs` |
-| `cargo xtask dev-ui` | Frontend in development mode |
+| `cargo xtask dev-ui` | Frontend in development mode, `/api` proxied to the dev server |
 | `cargo xtask dist` | Release binaries for the current machine in `dist/<target>/` |
 | `cargo xtask dist --target <target>` | Same for another target, option can be repeated |
 | `cargo xtask idle-bench` | Agent memory and CPU at rest, on Linux |
@@ -49,6 +49,18 @@ To build the Linux arm64 target from an amd64 machine, you also need `gcc-aarch6
 | `commits` | Commit message convention for the branch |
 
 `secrets` and `commits` compare the branch with `origin/main`. The `--base <ref>` option changes that starting point.
+
+## Running the server locally
+
+```bash
+(cd ui && pnpm build)      # the dev server serves ui/dist
+cargo xtask dev-server
+cat .dev/server/setup-token
+```
+
+Open http://localhost:8080, enter the token and create the first admin. To start again from an empty server, stop it and delete `.dev/server`.
+
+Creating invitations needs the admin key, registered from the Banc application. Until the application exists, the end-to-end test `crates/banc-server/tests/enrollment.rs` plays that part. How the server works is described in `docs/server.md`.
 
 ## Commit messages
 

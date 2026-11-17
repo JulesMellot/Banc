@@ -59,7 +59,7 @@ docs/               PLAN.md and technical notes
 Details, with the tools to install, are in `docs/development.md`.
 
 - `cargo xtask check`: the same checks as CI on every push. Steps: `fmt`, `architecture`, `clippy`, `tests`, `migrations`, `frontend`, `python`, `deny`, `secrets`, `commits`. `cargo xtask check clippy tests` only runs the steps listed.
-- `cargo xtask dev-server`, `cargo xtask dev-agent`, `cargo xtask dev-ui`
+- `cargo xtask dev-server`, `cargo xtask dev-agent`, `cargo xtask dev-ui` (the server serves `ui/dist`: run `pnpm build` in `ui/` first, or use `dev-ui`, which proxies `/api` to the server)
 - `cargo nextest run --workspace` for the tests alone
 - `cargo xtask schema` after adding a migration, then review the diff of `migrations/schema.sql`
 - `cargo xtask dist`: release binaries for the current machine in `dist/<target>/`, `--target <target>` for another target. Installers arrive in phase 7.
@@ -68,22 +68,38 @@ Details, with the tools to install, are in `docs/development.md`.
 
 ## Status and decisions
 
-Phase 0 is done. The three binaries start, open their logs and wait for shutdown. No product feature exists yet.
+Phase 0 is done. Prototypes P1 and P2 have their procedure, waiting to be run by hand. Phase 1 is half done: the server side is finished, the agent side (agent, session helper, application, admin key generation) is next. The detailed status is at the top of `docs/PLAN.md`, the server in `docs/server.md`.
 
 - **Rust toolchain pinned** in `rust-toolchain.toml`, so that clippy does not change its mind between two runs. Dependabot proposes version bumps.
 - **Dependency versions** declared once, in `[workspace.dependencies]` of the root `Cargo.toml`.
 - **Command line** of the three binaries with `lexopt`, not `clap`: the agent counts its bytes. `clap` is reserved for `xtask`.
 - **Logs**: `banc_platform::logging`, one file per day. The write queue is limited to 1,024 lines; the default cost 4 MB at rest.
-- **`tracing` without the `#[instrument]` macro**: it pulls in a second version of `syn`, which `cargo deny` refuses.
-- **Migrations**: `migrations/NNNN_name.sql` files, embedded in `banc-server`. `migrations/schema.sql` keeps the resulting schema and CI compares it. The folder is empty until phase 1.
-- **Server configuration**: `banc_server::config`, commented example in `packaging/server/banc-server.toml`. An unknown key is refused.
-- **Tauri window**: no `ui/src-tauri` crate yet. It would require webkit2gtk in every Linux CI job without bringing anything before phase 1. `ui/` contains the Svelte frontend alone.
+- **`tracing` without the `#[instrument]` macro**: it pulls in `tracing-attributes` and more proc-macro code. iroh already brings `syn` 3 next to `syn` 2 (skip in `deny.toml`); do not add a third reason to keep both.
+- **Migrations**: `migrations/NNNN_name.sql` files, embedded in `banc-server`. `migrations/schema.sql` keeps the resulting schema and CI compares it. `0001_enrollment.sql`: admins, sessions, team admin key, invitations, machines, events.
+- **Server configuration**: `banc_server::config`, commented example in `packaging/server/banc-server.toml`. An unknown key is refused. `public_url` is required.
+- **Tauri window**: no `ui/src-tauri` crate yet. It would require webkit2gtk in every Linux CI job. `ui/` contains the Svelte frontend alone, which is for now the web admin served by the server (`http.admin_ui`).
 - **TypeScript 6**: `svelte-check` and `typescript-eslint` do not accept version 7 yet.
 - **Commit scope** optional for the `docs`, `build`, `ci` and `chore` types. `Refs:` line required. Dependabot commits exempt.
-- **Interface text** in `ui/src/lib/i18n/fr.json`, read through `t('key')`.
+- **Interface text** in `ui/src/lib/i18n/fr.json`, read through `t('key')`. Server error codes map to `error.<code>`.
 - **Python scripts**: Python 3.7 syntax until prototype P10 has answered.
 - **Protection of `main`**: `.github/rulesets/main.json`, to be imported into GitHub. Required checks: `PR ready` and `PR title`. See `docs/ci.md`.
 - **Languages**: everything in English, except the values in `ui/src/lib/i18n/fr.json`, which are the French interface text. The keys of that file are in English.
+
+Phase 1 decisions (server side):
+
+- **iroh 1.4** (QUIC through `noq`, not `quinn`), `tls-ring`, `presets::Minimal`: no n0 relays, no n0 DNS. Key types come from `iroh-base` (`banc_proto::keys` re-exports them): one Ed25519 implementation for machine keys, admin key and signatures.
+- **Signatures** always go through `banc_proto::keys::sign` / `verify`, with a domain label (`banc/enroll/1`, `banc/admin-key/1`). Phase 2 adds `banc/manifest/1`. A signature for one purpose is never valid for another.
+- **Enrollment over HTTPS**, signed with the machine key. The relay and the control channel only accept enrolled keys, so an unenrolled machine has nothing but HTTPS.
+- **Control channel**: one iroh connection per agent, ALPN `banc/control/1`, length-prefixed JSON frames (64 KB max), heartbeat every 5 minutes. The server can push on it later; it carries data, never commands.
+- **Relay** run inside the server (`iroh-relay` with the `server` feature), with an access check against the `machines` table. The server joins it through its local address, agents through the public URL.
+- **TLS terminated in front** of the server (example `packaging/server/Caddyfile`). The plan's "certificate obtained by the server" moves to phase 7.
+- **Server key in a file** (`data_dir/server.key`, 0600, written by `banc_platform::fs::write_private`): no keychain on the VPS. Workstation secrets still go to the keychain.
+- **First admin** through a one-time token written to `data_dir/setup-token`, never logged.
+- **Admin passwords** argon2id (crate defaults), sessions of 12 hours, token hash only in the database. TOTP is not done yet.
+- **Invitation key to copy**: `<token>-<fingerprint>`, both base32. Fingerprint: 16 bytes of a BLAKE3 key derivation of the admin public key.
+- **No `users` table yet**: the invitation carries the user's name and person role, copied to the machine. A table will come when a user needs several machines or permissions.
+- **`cargo deny`**: BSD-2-Clause, BSD-3-Clause and ISC allowed, CDLA-Permissive-2.0 for `webpki-roots` only. Duplicate versions and two "unmaintained" notices from the iroh tree are listed with their reason in `deny.toml`.
+- **Integration tests** with clippy's `unwrap_used`: an integration test file starts with `#![cfg(test)]` so that its helper functions count as test code.
 
 ## Commits and CI
 
