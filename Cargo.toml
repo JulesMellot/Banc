@@ -67,6 +67,20 @@ print_stdout = "deny"
 print_stderr = "deny"
 
 [profile.release]
-lto = "thin"
+# Optimized for size: the agent's code pages count in its resident memory
+# at rest (section 10 of the plan). Fat LTO and "s" take the agent binary
+# from 13 MB to 7.5 MB.
+lto = "fat"
 codegen-units = 1
 strip = true
+opt-level = "s"
+
+# Speed where it is the point: password and file hashing.
+[profile.release.package.argon2]
+opt-level = 3
+
+[profile.release.package.blake2]
+opt-level = 3
+
+[profile.release.package.blake3]
+opt-level = 3
