@@ -41,6 +41,18 @@ pub fn log_dir(scope: Scope) -> Result<PathBuf, PathError> {
     os::log_dir(scope, &|name| std::env::var_os(name))
 }
 
+/// Banc's data folder: the agent's enrollment state for `System`, the
+/// application's settings for `User`.
+pub fn state_dir(scope: Scope) -> Result<PathBuf, PathError> {
+    os::state_dir(scope, &|name| std::env::var_os(name))
+}
+
+/// Where the agent listens for the interface: a Unix socket, or a named
+/// pipe on Windows.
+pub fn agent_socket() -> PathBuf {
+    PathBuf::from(os::AGENT_SOCKET)
+}
+
 /// Required environment variable, refused if empty.
 fn required(env: Env<'_>, name: &'static str) -> Result<PathBuf, PathError> {
     match env(name) {
