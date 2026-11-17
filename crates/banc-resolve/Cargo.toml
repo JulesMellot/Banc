@@ -10,3 +10,7 @@ repository.workspace = true
 
 [lints]
 workspace = true
+
+[dependencies]
+banc-platform.workspace = true
+banc-proto.workspace = true

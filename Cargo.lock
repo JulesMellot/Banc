@@ -332,6 +332,10 @@ dependencies = [
 [[package]]
 name = "banc-resolve"
 version = "0.0.0"
+dependencies = [
+ "banc-platform",
+ "banc-proto",
+]
 
 [[package]]
 name = "banc-server"
