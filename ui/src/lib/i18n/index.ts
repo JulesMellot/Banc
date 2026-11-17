@@ -16,3 +16,8 @@ export function format(template: string, values: Record<string, string | number>
 export function t(key: MessageKey, values?: Record<string, string | number>): string {
   return format(fr[key], values);
 }
+
+/** Whether a key built at run time exists. */
+export function hasMessage(key: string): key is MessageKey {
+  return Object.hasOwn(fr, key);
+}

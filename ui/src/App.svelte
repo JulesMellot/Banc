@@ -1,17 +1,33 @@
 <script lang="ts">
-  import { t } from './lib/i18n';
+  import Admin from './admin/Admin.svelte';
 </script>
 
-<main>
-  <h1>{t('app.name')}</h1>
-  <p>{t('app.tagline')}</p>
-</main>
+<Admin />
 
 <style>
-  main {
+  :global(body) {
     font-family: system-ui, sans-serif;
-    margin: 4rem auto;
-    max-width: 40rem;
-    padding: 0 1rem;
+    margin: 0;
+    color: #1d1d1f;
+    background: #f5f5f7;
+  }
+  :global(table) {
+    border-collapse: collapse;
+    width: 100%;
+  }
+  :global(th),
+  :global(td) {
+    text-align: left;
+    padding: 0.4rem 0.6rem;
+    border-bottom: 1px solid #ddd;
+  }
+  :global(section) {
+    background: white;
+    border-radius: 8px;
+    padding: 1rem 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+  :global([role='alert']) {
+    color: #b00020;
   }
 </style>
