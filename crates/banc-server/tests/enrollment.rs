@@ -41,7 +41,7 @@ impl Harness {
         let data_dir = dir.path().join("data");
         let text = format!(
             r#"
-            data_dir = "{}"
+            data_dir = '{}'
             public_url = "http://localhost:8080"
             [http]
             listen = "127.0.0.1:0"
@@ -679,7 +679,7 @@ async fn enrollment_refusals() {
 async fn server_key_survives_a_restart() {
     let dir = tempfile::tempdir().unwrap();
     let text = format!(
-        "data_dir = \"{}\"\npublic_url = \"http://localhost:8080\"\n\
+        "data_dir = '{}'\npublic_url = \"http://localhost:8080\"\n\
          [http]\nlisten = \"127.0.0.1:0\"\n[iroh]\nlisten = \"127.0.0.1:0\"\n\
          [relay]\nenabled = false\n",
         dir.path().join("data").display()
