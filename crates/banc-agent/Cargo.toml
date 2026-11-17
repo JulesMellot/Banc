@@ -14,6 +14,19 @@ workspace = true
 [dependencies]
 anyhow.workspace = true
 banc-platform.workspace = true
+banc-proto.workspace = true
+banc-resolve.workspace = true
+iroh.workspace = true
 lexopt.workspace = true
-tokio = { workspace = true, features = ["rt"] }
+reqwest.workspace = true
+rustls.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["rt", "time", "macros", "sync"] }
 tracing.workspace = true
+
+[dev-dependencies]
+banc-server = { path = "../banc-server" }
+tempfile.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread"] }

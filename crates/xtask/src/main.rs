@@ -18,6 +18,13 @@ use clap::{Parser, Subcommand};
 
 use crate::cmd::{root, run, say};
 
+/// Local endpoint of the development agent.
+const DEV_AGENT_SOCKET: &str = if cfg!(windows) {
+    r"\\.\pipe\banc-agent-dev"
+} else {
+    ".dev/agent.sock"
+};
+
 #[derive(Parser)]
 #[command(name = "cargo xtask", about = "Banc development commands")]
 struct Cli {
@@ -106,7 +113,15 @@ fn execute() -> anyhow::Result<()> {
         }
         Command::DevAgent => {
             let mut command = cmd::cargo(&["run", "-p", "banc-agent", "--"]);
-            command.args(["--log-dir", ".dev/logs", "--stderr"]);
+            command.args([
+                "--log-dir",
+                ".dev/logs",
+                "--state-dir",
+                ".dev/agent",
+                "--stderr",
+            ]);
+            // Talk to it with `cargo run -p banc-agent -- status --socket <same>`.
+            command.args(["--socket", DEV_AGENT_SOCKET]);
             run(command.current_dir(&root))
         }
         Command::DevUi => {
