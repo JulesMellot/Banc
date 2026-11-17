@@ -1,7 +1,7 @@
 //! Banc server.
 //!
-//! Phase 0: the server reads its configuration, opens its logs and its
-//! database, then waits for shutdown. The API arrives in phase 1.
+//! Reads its configuration, opens its logs, starts the API, the iroh
+//! endpoint and the relay, then runs until the shutdown signal.
 
 mod args;
 
@@ -12,7 +12,7 @@ use anyhow::Context;
 use banc_platform::logging::{self, LogConfig};
 use banc_platform::paths::{self, Scope};
 use banc_server::config::Config;
-use banc_server::db;
+use banc_server::{server, state};
 
 const NAME: &str = env!("CARGO_PKG_NAME");
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -51,20 +51,20 @@ fn run() -> anyhow::Result<()> {
     log.stderr = options.stderr;
     let _log_guard = logging::init(&log)?;
 
-    let database = config.database_path();
-    let conn = db::open(&database)
-        .with_context(|| format!("opening the database {}", database.display()))?;
-    tracing::info!(version = VERSION, database = %database.display(), "server started");
-
-    let runtime = tokio::runtime::Builder::new_current_thread()
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
         .enable_all()
         .build()
         .context("starting the runtime")?;
-    runtime
-        .block_on(banc_platform::signal::shutdown())
-        .context("waiting for the shutdown signal")?;
-
-    drop(conn);
+    runtime.block_on(async {
+        let running = server::start(&config, state::system_clock()).await?;
+        tracing::info!(version = VERSION, "server started");
+        banc_platform::signal::shutdown()
+            .await
+            .context("waiting for the shutdown signal")?;
+        tracing::info!("stopping");
+        running.shutdown().await
+    })?;
     tracing::info!("server stopped");
     Ok(())
 }

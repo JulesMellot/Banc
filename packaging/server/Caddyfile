@@ -1,0 +1,11 @@
+# Example front for banc-server on the VPS: TLS on port 443 with a Let's
+# Encrypt certificate, the relay paths to the iroh relay, everything else to
+# the API and the web admin. Ports match banc-server.toml.
+#
+# Phase 7 replaces this file with the full Docker Compose setup.
+
+banc.mycompany.com {
+	@relay path /relay /relay/* /ping /generate_204
+	reverse_proxy @relay 127.0.0.1:3340
+	reverse_proxy 127.0.0.1:8080
+}

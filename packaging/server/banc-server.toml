@@ -2,8 +2,39 @@
 # Start with: banc-server --config /etc/banc/banc-server.toml
 # A relative path starts from this file's folder. An unknown key is refused.
 
-# Server data folder: the SQLite database (banc.sqlite) is created there.
+# Server data folder: the SQLite database (banc.sqlite) and the server's
+# iroh key (server.key) are created there.
 data_dir = "/var/lib/banc"
+
+# Address of the server as workstations and admins see it. Written into
+# invitation links.
+public_url = "https://banc.mycompany.com"
+
+[http]
+# API and web admin. TLS (port 443) is terminated in front of the server.
+listen = "127.0.0.1:8080"
+
+# Folder of the built web admin. Without it, only the API is served.
+# admin_ui = "/usr/share/banc/admin"
+
+[iroh]
+# UDP address of the server's iroh endpoint.
+listen = "0.0.0.0:443"
+
+# Public addresses of that endpoint, given to agents for a direct
+# connection. Empty: agents go through the relay.
+# public_addrs = ["203.0.113.5:443"]
+
+[relay]
+# The team's iroh relay, run inside the server process. Only enrolled
+# machines may use it.
+enabled = true
+
+# HTTP address of the relay. TLS is terminated in front of it.
+listen = "127.0.0.1:3340"
+
+# Public URL of the relay. Default: public_url.
+# url = "https://relay.mycompany.com"
 
 [logs]
 # Log folder, one file per day. Default: /var/log/banc.

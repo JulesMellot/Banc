@@ -13,16 +13,27 @@ workspace = true
 
 [dependencies]
 anyhow.workspace = true
+argon2.workspace = true
+axum.workspace = true
+banc-proto.workspace = true
+blake3.workspace = true
+data-encoding.workspace = true
+getrandom.workspace = true
+iroh.workspace = true
+iroh-relay.workspace = true
 banc-platform.workspace = true
 include_dir.workspace = true
 lexopt.workspace = true
 rusqlite.workspace = true
 rusqlite_migration.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true, features = ["rt"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "net", "time", "fs", "sync"] }
 toml.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+tokio = { workspace = true, features = ["macros"] }
+tower = { workspace = true, features = ["util"] }

@@ -40,7 +40,7 @@ GitHub only lists a check among the required checks after its first run. Open a 
 
 The plan asks for these checks, but they have nothing to test before the product exists.
 
-- **End-to-end tests** in `pr.yml`, with a server, a depot and two agents in containers. The first scenario, enrollment, arrives in phase 1. The job is added to the `needs` list of `PR ready`.
+- **End-to-end tests** in `pr.yml`, with a server, a depot and two agents in containers. The server side of the enrollment scenario already runs in-process with `cargo nextest` (`crates/banc-server/tests/enrollment.rs`: real iroh endpoints and relay on 127.0.0.1, agent played by the test). The container job arrives with the agent, in the second half of phase 1, and is added to the `needs` list of `PR ready`.
 - **Idle measurement of the session helper.** `idle-bench` only measures the agent, because the session helper exits immediately in phase 0. To be extended in phase 1.
 - **Long tests** in `nightly.yml`, in phase 3.
 - **`release.yml`**, in phase 7.

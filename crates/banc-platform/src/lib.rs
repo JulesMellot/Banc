@@ -4,6 +4,7 @@
 //! (`cargo xtask check architecture` checks it). Each module groups its
 //! per-OS variants in `linux`, `macos` and `windows` submodules.
 
+pub mod fs;
 pub mod logging;
 pub mod paths;
 pub mod signal;

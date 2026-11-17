@@ -1,6 +1,21 @@
 # Development configuration, used by `cargo xtask dev-server`.
 # Everything is written to .dev/, ignored by git.
 data_dir = "../.dev/server"
+public_url = "http://localhost:8080"
+
+[http]
+listen = "127.0.0.1:8080"
+# Built by `pnpm build` in ui/.
+admin_ui = "../ui/dist"
+
+[iroh]
+# Not 7842: iroh probes that port on the relay host for address discovery.
+listen = "127.0.0.1:4433"
+public_addrs = ["127.0.0.1:4433"]
+
+[relay]
+listen = "127.0.0.1:3340"
+url = "http://localhost:3340"
 
 [logs]
 dir = "../.dev/logs"

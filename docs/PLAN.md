@@ -4,6 +4,27 @@ This document is the specification for Claude Code. Each phase delivers somethin
 
 Context: Banc is an internal tool for a company's salaried editors and colorists, on company machines. Every machine has DaVinci Resolve Studio.
 
+## Where we are
+
+Updated 2026-11-17.
+
+| Step (section 14) | Status |
+|---|---|
+| Phase 0, skeleton | Done (PRs #1 to #3). Acceptance criteria met; the protection of `main` is imported by hand (`docs/ci.md`). |
+| Prototypes P1 and P2 | Procedures and scripts ready (PR #4), waiting to be run on real machines. No answer in `docs/prototypes.md` yet. |
+| Prototypes P3 to P10 | Not started. |
+| Phase 1, server side | Done: enrollment, invitations, machines, admin accounts, admin key registration, iroh endpoint with the control channel, relay restricted to the team, minimal web admin. See `docs/server.md`. |
+| Phase 1, agent side | Next: machine key in the keychain, enrollment from a `banc://` link, control channel and heartbeat, system service, session helper, inventory, Resolve version detection, admin key generation with recovery phrase in the application, `idle-bench` for the session helper, macOS and Windows. |
+| Phases 2 to 8 | Not started. |
+
+Phase 1 acceptance criteria, against what exists:
+
+- *One machine of each OS enrolls with a link, without a terminal*: the server accepts and checks enrollments (tested end to end in `crates/banc-server/tests/enrollment.rs`); the agent that sends them does not exist yet.
+- *The admin sees the machines and their Resolve version*: the web admin lists them with their state, inventory and Resolve version, as soon as an agent reports.
+- *Resource targets at rest are met*: server measured (18.7 MB, no CPU at rest); agent and session helper to be measured once they do something.
+
+Not done in phase 1 server side, on purpose or for later: TOTP for admins, rate limiting of the login, the server obtaining its own TLS certificate (phase 7), a `users` table.
+
 ## 1. The product on one page
 
 ### What the user experiences
@@ -63,8 +84,9 @@ iroh 1.x connects two machines identified by their public key, directly or throu
 
 ### VPS exposure
 
-- One domain name, port 443, a Let's Encrypt certificate obtained by the server.
-- The HTTPS API and the iroh relay share port 443.
+- One domain name, port 443, a Let's Encrypt certificate.
+- The HTTPS API and the iroh relay share TCP port 443. Until phase 7 a reverse proxy in front of the server terminates TLS and routes the relay paths (`packaging/server/Caddyfile`).
+- The server's own iroh endpoint listens on UDP 443 (QUIC). Agents that cannot reach it go through the relay.
 - PostgreSQL listens on `127.0.0.1` only.
 
 If the VPS is down, coordination and collaboration stop. That is accepted. Reservation mode keeps working on the files already present, and publications go out when the server comes back.
@@ -94,7 +116,7 @@ The agent runs with admin rights and installs software. A compromised VPS must n
 
 ## 3. Data model
 
-SQLite on the VPS:
+SQLite on the VPS. Phase 1 created `admins`, `admin_sessions`, `team` (the admin public key), `invites`, `machines` and `events` (`migrations/0001_enrollment.sql`). Until `users` exists, a machine carries the user name and person role of its invitation.
 
 - `users`: name, person role, permissions.
 - `machines`: name, OS, arch, role, public key, last connection, agent version, detected Resolve version, last report, latency to the VPS.
