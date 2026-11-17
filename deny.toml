@@ -19,6 +19,7 @@ yanked = "deny"
 ignore = [
   { id = "RUSTSEC-2026-0543", reason = "chrono: via iroh-relay (tokio-rustls-acme) and netwatch (wmi)" },
   { id = "RUSTSEC-2024-0436", reason = "paste: via iroh (netwatch, netlink-packet-core)" },
+  { id = "RUSTSEC-2024-0370", reason = "proc-macro-error: via tao's Linux dependencies (gtk), never built, see skip-tree" },
 ]
 
 [licenses]
@@ -36,6 +37,8 @@ confidence-threshold = 0.9
 # Mozilla's root certificates, as data. Allowed for this crate only.
 exceptions = [
   { crate = "webpki-roots", allow = ["CDLA-Permissive-2.0"] },
+  # Build-time only, in tao's Linux dependencies (see skip-tree).
+  { crate = "target-lexicon", allow = ["Apache-2.0 WITH LLVM-exception"] },
 ]
 
 [licenses.private]
@@ -53,14 +56,19 @@ skip = [
   { crate = "cpufeatures@0.2.17", reason = "iroh (noq-proto, aes-gcm)" },
   { crate = "crypto-common@0.1.7", reason = "iroh (noq-proto, aes-gcm)" },
   { crate = "getrandom@0.2.17", reason = "iroh (ring)" },
-  { crate = "hashbrown@0.14.5", reason = "iroh-relay (dashmap)" },
   { crate = "netdev@0.45.1", reason = "iroh (netwatch)" },
   { crate = "netlink-packet-core@0.8.2", reason = "iroh (netwatch)" },
   { crate = "netlink-packet-route@0.31.0", reason = "iroh (netwatch)" },
   { crate = "netlink-sys@0.8.8", reason = "iroh (netwatch)" },
   { crate = "pem@3.0.6", reason = "iroh-relay (tokio-rustls-acme)" },
-  { crate = "syn@2.0.119", reason = "syn 3 arrives with iroh, the rest of the tree is on syn 2" },
   { crate = "synstructure@0.13.2", reason = "follows syn 2" },
+  { crate = "miniz_oxide@0.8.9", reason = "tray-icon (muda, png)" },
+]
+# tao, the session helper's event loop, is only used on macOS and Windows,
+# but cargo deny still walks its Linux dependencies (GTK 3) and their older
+# crate versions. Nothing under gtk is ever built.
+skip-tree = [
+  { crate = "gtk@0.18.2", reason = "tao on Linux, not built: tao is only a macOS and Windows dependency" },
 ]
 # OpenSSL complicates cross-compiling the five targets: TLS goes through rustls.
 deny = [

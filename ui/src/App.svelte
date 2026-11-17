@@ -1,8 +1,14 @@
 <script lang="ts">
   import Admin from './admin/Admin.svelte';
+  import Window from './app/Window.svelte';
+  import { inWindow } from './lib/agent';
 </script>
 
-<Admin />
+{#if inWindow()}
+  <Window />
+{:else}
+  <Admin />
+{/if}
 
 <style>
   :global(body) {
@@ -29,5 +35,17 @@
   }
   :global([role='alert']) {
     color: #b00020;
+  }
+  :global(form) {
+    display: grid;
+    gap: 0.8rem;
+    max-width: 30rem;
+  }
+  :global(label) {
+    display: grid;
+    gap: 0.2rem;
+  }
+  :global(code) {
+    word-break: break-all;
   }
 </style>

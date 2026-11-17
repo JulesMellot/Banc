@@ -1,0 +1,49 @@
+[package]
+name = "banc-app"
+description = "Banc window: joins a team, shows the workstation's state, holds the admin key."
+version = "0.0.0"
+edition = "2021"
+rust-version = "1.97"
+publish = false
+license = "LicenseRef-Proprietary"
+
+# Separate from the repository's workspace: see the root Cargo.toml.
+[workspace]
+
+[lints.rust]
+unused_must_use = "deny"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+dbg_macro = "deny"
+todo = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
+
+[build-dependencies]
+tauri-build = { version = "2.7.5", features = [] }
+
+[dependencies]
+anyhow = "1.0.104"
+banc-platform = { path = "../../crates/banc-platform" }
+banc-proto = { path = "../../crates/banc-proto" }
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls-no-provider", "json"] }
+rustls = { version = "0.23.46", default-features = false, features = ["ring", "std"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+tauri = { version = "2.12.6", features = [] }
+tauri-plugin-deep-link = "2.6.3"
+tauri-plugin-single-instance = { version = "2.5.5", features = ["deep-link"] }
+thiserror = "2.0.21"
+tokio = { version = "1.54.1", default-features = false, features = ["time"] }
+tracing = { version = "0.1.44", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+tempfile = "3.27.0"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+strip = true
+opt-level = "s"

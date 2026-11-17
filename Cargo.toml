@@ -1,6 +1,9 @@
 [workspace]
 resolver = "2"
 members = ["crates/*"]
+# The Tauri application is its own workspace: building it needs webkit2gtk
+# on Linux, which the checks of the other crates must not depend on.
+exclude = ["ui/src-tauri"]
 
 [workspace.package]
 version = "0.0.0"
@@ -18,17 +21,24 @@ banc-resolve = { path = "crates/banc-resolve" }
 banc-tunnel = { path = "crates/banc-tunnel" }
 
 anyhow = "1.0.104"
+apple-native-keyring-store = { version = "1.0.2", features = ["keychain"] }
 argon2 = { version = "0.6.0", default-features = false, features = ["alloc", "password-hash"] }
 axum = { version = "0.8.9", default-features = false, features = ["http1", "json", "tokio", "query"] }
 blake3 = "1.8.7"
+clap = { version = "4", features = ["derive"] }
 data-encoding = "2.11.1"
+gethostname = "1.1.0"
 getrandom = "0.4.3"
+include_dir = "0.7.4"
 iroh = { version = "1.4.1", default-features = false, features = ["tls-ring"] }
 iroh-base = { version = "1.4.1", default-features = false, features = ["key"] }
 iroh-relay = { version = "1.4.1", default-features = false, features = ["server"] }
-clap = { version = "4", features = ["derive"] }
-include_dir = "0.7.4"
+keyring-core = "1.0.1"
 lexopt = "0.3.2"
+# HTTPS client of the agent, with rustls and the ring provider that iroh
+# already brings.
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls-no-provider", "json"] }
+rustls = { version = "0.23.46", default-features = false, features = ["ring", "std"] }
 # rusqlite follows the version accepted by rusqlite_migration.
 rusqlite = { version = "0.41.0", features = ["bundled"] }
 rusqlite_migration = "2.7.0"
@@ -36,6 +46,7 @@ serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 tempfile = "3.27.0"
 thiserror = "2.0.21"
+tao = { version = "0.37.2", default-features = false }
 tokio = { version = "1.54.1", default-features = false }
 toml = "1.2.1"
 tower = { version = "0.5.3", default-features = false }
@@ -43,6 +54,10 @@ tower = { version = "0.5.3", default-features = false }
 tracing = { version = "0.1.44", default-features = false, features = ["std"] }
 tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std"] }
+tray-icon = { version = "0.26.1", default-features = false }
+windows-native-keyring-store = "1.1.0"
+windows-service = "0.8.1"
+windows-sys = "0.61.2"
 
 [workspace.lints.rust]
 unused_must_use = "deny"
@@ -57,6 +72,20 @@ print_stdout = "deny"
 print_stderr = "deny"
 
 [profile.release]
-lto = "thin"
+# Optimized for size: the agent's code pages count in its resident memory
+# at rest (section 10 of the plan). Fat LTO and "s" take the agent binary
+# from 13 MB to 7.5 MB.
+lto = "fat"
 codegen-units = 1
 strip = true
+opt-level = "s"
+
+# Speed where it is the point: password and file hashing.
+[profile.release.package.argon2]
+opt-level = 3
+
+[profile.release.package.blake2]
+opt-level = 3
+
+[profile.release.package.blake3]
+opt-level = 3

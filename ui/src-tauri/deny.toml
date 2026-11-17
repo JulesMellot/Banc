@@ -1,0 +1,80 @@
+# cargo deny for the Banc window (cargo xtask check app). Same policy as the
+# repository's deny.toml; the exceptions below come from the Tauri tree.
+
+[graph]
+targets = [
+  "x86_64-unknown-linux-gnu",
+  "aarch64-unknown-linux-gnu",
+  "aarch64-apple-darwin",
+  "x86_64-apple-darwin",
+  "x86_64-pc-windows-msvc",
+]
+all-features = true
+
+[advisories]
+version = 2
+yanked = "deny"
+# "Unmaintained" notices without a known vulnerability, all through Tauri.
+ignore = [
+  { id = "RUSTSEC-2024-0370", reason = "proc-macro-error: build time only, via gtk-rs (Linux)" },
+  { id = "RUSTSEC-2026-0370", reason = "zvariant: via zbus, single-instance on Linux" },
+  { id = "RUSTSEC-2026-0371", reason = "zbus_names: via zbus, single-instance on Linux" },
+  { id = "RUSTSEC-2026-0372", reason = "zvariant_derive: via zbus, single-instance on Linux" },
+]
+
+[licenses]
+version = 2
+allow = ["MIT", "Apache-2.0", "Unicode-3.0", "Zlib", "BSD-2-Clause", "BSD-3-Clause", "ISC"]
+confidence-threshold = 0.9
+# Crate by crate: the web engine's CSS parsing (MPL-2.0, file-level
+# copyleft, used unmodified), and two permissive licenses.
+exceptions = [
+  { crate = "cssparser", allow = ["MPL-2.0"] },
+  { crate = "cssparser-macros", allow = ["MPL-2.0"] },
+  { crate = "dtoa-short", allow = ["MPL-2.0"] },
+  { crate = "selectors", allow = ["MPL-2.0"] },
+  { crate = "option-ext", allow = ["MPL-2.0"] },
+  { crate = "target-lexicon", allow = ["Apache-2.0 WITH LLVM-exception"] },
+  { crate = "tiny-keccak", allow = ["CC0-1.0"] },
+]
+
+[licenses.private]
+ignore = true
+
+[bans]
+multiple-versions = "deny"
+wildcards = "deny"
+allow-wildcard-paths = true
+# Tauri 2 still carries older versions next to the current ones.
+skip = [
+  { crate = "base64@0.21.7", reason = "tauri" },
+  { crate = "bitflags@1.3.2", reason = "tauri (gtk-rs, Linux)" },
+  { crate = "getrandom@0.2.17", reason = "ring" },
+  { crate = "getrandom@0.3.4", reason = "tauri" },
+  { crate = "hashbrown@0.12.3", reason = "tauri (indexmap 1)" },
+  { crate = "hashbrown@0.14.5", reason = "tauri" },
+  { crate = "heck@0.4.1", reason = "tauri (gtk-rs, Linux)" },
+  { crate = "indexmap@1.9.3", reason = "tauri" },
+  { crate = "miniz_oxide@0.8.9", reason = "tauri" },
+  { crate = "proc-macro-crate@1.3.1", reason = "tauri (gtk-rs, Linux)" },
+  { crate = "proc-macro-crate@2.0.2", reason = "tauri (gtk-rs, Linux)" },
+  { crate = "serde_spanned@0.6.9", reason = "tauri (toml 0.8)" },
+  { crate = "syn@1.0.109", reason = "tauri (gtk-rs, Linux)" },
+  { crate = "syn@2.0.119", reason = "syn 3 arrives with iroh-base, the rest is on syn 2" },
+  { crate = "thiserror@1.0.69", reason = "tauri" },
+  { crate = "thiserror-impl@1.0.69", reason = "tauri" },
+  { crate = "toml@0.8.2", reason = "tauri" },
+  { crate = "toml_datetime@0.6.3", reason = "tauri (toml 0.8)" },
+  { crate = "toml_edit@0.19.15", reason = "tauri (gtk-rs, Linux)" },
+  { crate = "toml_edit@0.20.2", reason = "tauri (gtk-rs, Linux)" },
+  { crate = "winnow@0.5.40", reason = "tauri (toml 0.8)" },
+]
+deny = [
+  { crate = "openssl-sys", reason = "use rustls" },
+  { crate = "native-tls", reason = "use rustls" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

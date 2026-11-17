@@ -37,6 +37,11 @@ pub fn scan(root: &Path) -> anyhow::Result<Vec<Violation>> {
             collect(&path, &mut files)?;
         }
     }
+    // The window's code follows the same rule.
+    let app = root.join("ui/src-tauri/src");
+    if app.is_dir() {
+        collect(&app, &mut files)?;
+    }
     files.sort();
 
     let mut violations = Vec::new();
@@ -103,6 +108,11 @@ fn rust_line_is_os_specific(line: &str) -> bool {
         "unix",
         "windows",
     ];
+    // The attribute that hides the console of a Windows GUI program: not
+    // OS-specific logic, and it has to sit in the binary's root.
+    if line.contains("windows_subsystem") {
+        return false;
+    }
     line.contains("cfg") && OS_WORDS.iter().any(|word| contains_word(line, word))
 }
 
@@ -152,6 +162,7 @@ mod tests {
             "let config = load(\"unix.toml\");",
             "#[cfg(debug_assertions)] let unixtime = now();",
             "use std::os::raw::c_int;",
+            "#![cfg_attr(not(debug_assertions), windows_subsystem = \"windows\")]",
         ] {
             assert!(!rust_line_is_os_specific(line), "{line}");
         }
@@ -188,6 +199,7 @@ mod tests {
             "\n#[cfg(unix)]\nfn f() {}\n",
         );
         write("crates/banc-agent/target/debug/x.rs", "#[cfg(unix)]\n");
+        write("ui/src-tauri/src/links.rs", "#[cfg(windows)]\nfn f() {}\n");
         write(
             "crates/banc-session/Cargo.toml",
             "[target.'cfg(windows)'.dependencies]\n",
@@ -203,6 +215,7 @@ mod tests {
             [
                 "crates/banc-agent/src/deep/os.rs:2",
                 "crates/banc-session/Cargo.toml:1",
+                "ui/src-tauri/src/links.rs:1",
             ]
         );
     }

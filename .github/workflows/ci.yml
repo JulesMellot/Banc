@@ -42,6 +42,34 @@ jobs:
           cache-dependency-path: ui/pnpm-lock.yaml
       - run: cargo xtask check frontend
 
+  app:
+    name: Window (Tauri, Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install the Tauri prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev librsvg2-dev libxdo-dev
+      - uses: ./.github/actions/rust
+        with:
+          cache-key: app
+          workspaces: |
+            . -> target
+            ui/src-tauri -> target
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny@0.20.2
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: ui/package.json
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: ui/pnpm-lock.yaml
+      - run: cargo xtask check app
+
   python:
     name: Python scripts (ruff, compilation)
     runs-on: ubuntu-latest

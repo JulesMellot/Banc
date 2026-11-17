@@ -29,8 +29,8 @@ The full plan, phase by phase, is in `docs/PLAN.md`. Read it before any task. Wo
 - File transfer: `iroh-blobs` if its version is stable at the start, otherwise an in-house protocol over iroh streams with BLAKE3 and streaming verification (`bao-tree`). Decision to be recorded here in phase 3.
 - HTTP server: `axum`. Database: SQLite through `rusqlite` (`bundled` feature) and `rusqlite_migration`.
 - Interface: Tauri 2, Svelte + TypeScript frontend. Native system tray icon with `tray-icon` + `tao`, no web view.
-- System services: `service-manager` crate (launchd, Windows service, systemd).
-- Secrets: `keyring` crate. Signatures: `ed25519-dalek`. Updates: `self-replace`.
+- System services: a systemd unit, a launchd property list and `windows-service`, written by `banc_platform::service` (the `service-manager` crate was dropped in phase 1, see the decisions).
+- Secrets: `keyring-core` with the macOS and Windows stores, owner-only files on Linux. Signatures: Ed25519 through `iroh-base` (`ed25519-dalek` underneath). Updates: `self-replace`.
 - Logs: `tracing` + `tracing-appender` with rotation.
 - Resolve bridge: embedded Python scripts, run by the session helper only when it needs to talk to Resolve.
 
@@ -46,7 +46,8 @@ crates/
   banc-agent/       binary: system service (installs, transfers, tunnel)
   banc-session/     binary: system tray icon + Resolve bridge, in the user session
   banc-server/      binary: API, admin, iroh relay, cache, render queue
-ui/                 Tauri application (user window) and web admin (same frontend)
+ui/                 web admin and window frontend (Svelte); ui/src-tauri is the Tauri
+                    window, a separate Cargo workspace (it needs webkit2gtk on Linux)
 resolve-scripts/    embedded Python scripts
 migrations/         server SQL
 dev/                development configuration
@@ -58,17 +59,18 @@ docs/               PLAN.md and technical notes
 
 Details, with the tools to install, are in `docs/development.md`.
 
-- `cargo xtask check`: the same checks as CI on every push. Steps: `fmt`, `architecture`, `clippy`, `tests`, `migrations`, `frontend`, `python`, `deny`, `secrets`, `commits`. `cargo xtask check clippy tests` only runs the steps listed.
-- `cargo xtask dev-server`, `cargo xtask dev-agent`, `cargo xtask dev-ui` (the server serves `ui/dist`: run `pnpm build` in `ui/` first, or use `dev-ui`, which proxies `/api` to the server)
+- `cargo xtask check`: the same checks as CI on every push. Steps: `fmt`, `architecture`, `clippy`, `tests`, `migrations`, `frontend`, `app`, `python`, `deny`, `secrets`, `commits`. `cargo xtask check clippy tests` only runs the steps listed. The `app` step builds the Tauri window: on Linux it needs the WebKitGTK packages (`docs/development.md`).
+- `cargo xtask dev-server`, `cargo xtask dev-agent`, `cargo xtask dev-ui`, `cargo xtask dev-app` (the server serves `ui/dist`: run `pnpm build` in `ui/` first, or use `dev-ui`, which proxies `/api` to the server; `dev-app` needs `dev-ui` running)
+- `cargo xtask bundle-app`: the window with the agent and the session helper beside it, as an application for a test machine (unsigned, until phase 7)
 - `cargo nextest run --workspace` for the tests alone
 - `cargo xtask schema` after adding a migration, then review the diff of `migrations/schema.sql`
 - `cargo xtask dist`: release binaries for the current machine in `dist/<target>/`, `--target <target>` for another target. Installers arrive in phase 7.
-- `cargo xtask idle-bench`: agent memory and CPU at rest, on Linux
+- `cargo xtask idle-bench`: memory and CPU at rest on Linux, the agent alone, the agent enrolled and connected, the session helper
 - `cargo xtask hooks`: enables the `commit-msg` hook
 
 ## Status and decisions
 
-Phase 0 is done. Prototypes P1 and P2 have their procedure, waiting to be run by hand. Phase 1 is half done: the server side is finished, the agent side (agent, session helper, application, admin key generation) is next. The detailed status is at the top of `docs/PLAN.md`, the server in `docs/server.md`.
+Phase 0 is done. Prototypes P1 and P2 have their procedure, waiting to be run by hand. Phase 1 is coded and tested in CI; its acceptance criteria still need the hand test on a Mac, a Windows PC and a Linux workstation (`docs/phase1-checklist.md`). The detailed status is at the top of `docs/PLAN.md`; the server is described in `docs/server.md`, the workstation side in `docs/workstation.md`.
 
 - **Rust toolchain pinned** in `rust-toolchain.toml`, so that clippy does not change its mind between two runs. Dependabot proposes version bumps.
 - **Dependency versions** declared once, in `[workspace.dependencies]` of the root `Cargo.toml`.
@@ -100,6 +102,21 @@ Phase 1 decisions (server side):
 - **No `users` table yet**: the invitation carries the user's name and person role, copied to the machine. A table will come when a user needs several machines or permissions.
 - **`cargo deny`**: BSD-2-Clause, BSD-3-Clause and ISC allowed, CDLA-Permissive-2.0 for `webpki-roots` only. Duplicate versions and two "unmaintained" notices from the iroh tree are listed with their reason in `deny.toml`.
 - **Integration tests** with clippy's `unwrap_used`: an integration test file starts with `#![cfg(test)]` so that its helper functions count as test code.
+
+Phase 1 decisions (workstation side):
+
+- **The agent is enrolled through its local endpoint** (`banc_proto::local`): a Unix socket (`/run/banc/agent.sock`, `/var/run/banc/agent.sock`) or the named pipe `\\.\pipe\banc-agent`, open to every local user. Two requests only: status, and enrollment, which works once. The window, the tray icon and `banc-agent enroll` (depot, tests) all go through it.
+- **The agent checks the server's admin key against the invitation's fingerprint** before storing anything. A refusal leaves no file and no key.
+- **Machine key** in the secret store under `machine-key`: System keychain on macOS, Credential Manager of LocalSystem on Windows, `/var/lib/banc/secrets/` (root, 0600) on Linux. With `--state-dir` (development, tests), files in that folder.
+- **Service registration without `service-manager`**: a unit file, a plist and one SCM call did not justify `plist`, `dirs`, `which` and `xml-rs` in the agent. `windows-service` also provides the SCM dispatcher; `--service` runs the agent under it.
+- **The window is its own Cargo workspace** (`ui/src-tauri`, `exclude` in the root `Cargo.toml`), with its own `Cargo.lock` and `deny.toml` (MPL-2.0 allowed crate by crate for the web engine's CSS parser). The same frontend is the web admin in a browser and the window in Tauri (`inWindow()`).
+- **Admin key**: generated by the window, kept in the user's keychain under `admin-key`, written down as a **recovery code** (Crockford base32, 11 groups of 5, 2-byte checksum) rather than a word list, which would have needed a word list license. The admin types the last group back before the key is stored.
+- **Elevation** (`banc_platform::elevate`): the window installs the service once, through the OS's own administrator prompt (osascript, UAC, pkexec).
+- **Tray icon** (`banc_platform::tray`, feature `tray`): `tray-icon` + `tao` on macOS and Windows. **None on Linux yet**: `tray-icon` needs GTK there. The session helper waits instead. To decide later (StatusNotifierItem over D-Bus is the candidate).
+- **Interface text outside the web frontend**: the session helper reads the same `fr.json` (`include_str!`).
+- **Release profile optimized for size** (`opt-level = "s"`, fat LTO), except argon2, blake2 and blake3: the agent's code pages count in its resident memory. Agent binary 13 MB to 7.5 MB, enrolled agent 14.1 MB to 10.2 MB.
+- **iroh keep-alives**: a connected agent wakes up about twice a minute (QUIC keep-alive every 5 s per path, relay ping every 15 s), 0.03% CPU. iroh's defaults are kept: they keep NAT mappings open for phase 3's peer-to-peer. `QuicTransportConfig` is the knob if it ever matters on laptops.
+- **`cargo deny`**: tao lists GTK for Linux although it is only a macOS and Windows dependency here; the gtk tree is skipped with that reason.
 
 ## Commits and CI
 

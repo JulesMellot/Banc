@@ -13,17 +13,17 @@ Updated 2026-11-17.
 | Phase 0, skeleton | Done (PRs #1 to #3). Acceptance criteria met; the protection of `main` is imported by hand (`docs/ci.md`). |
 | Prototypes P1 and P2 | Procedures and scripts ready (PR #4), waiting to be run on real machines. No answer in `docs/prototypes.md` yet. |
 | Prototypes P3 to P10 | Not started. |
-| Phase 1, server side | Done: enrollment, invitations, machines, admin accounts, admin key registration, iroh endpoint with the control channel, relay restricted to the team, minimal web admin. See `docs/server.md`. |
-| Phase 1, agent side | Next: machine key in the keychain, enrollment from a `banc://` link, control channel and heartbeat, system service, session helper, inventory, Resolve version detection, admin key generation with recovery phrase in the application, `idle-bench` for the session helper, macOS and Windows. |
+| Phase 1, server side | Done (PR #5): enrollment, invitations, machines, admin accounts, admin key registration, iroh endpoint with the control channel, relay restricted to the team, minimal web admin. See `docs/server.md`. |
+| Phase 1, workstation side | Coded and tested in CI: agent (machine key, enrollment, connection, heartbeat, inventory, Resolve detection, system service), window (`banc://` link, joining, workstation state, admin key with recovery code), session helper (tray icon on macOS and Windows), `idle-bench` extended. See `docs/workstation.md`. **Hand test on the three OSes pending**: `docs/phase1-checklist.md`. |
 | Phases 2 to 8 | Not started. |
 
 Phase 1 acceptance criteria, against what exists:
 
-- *One machine of each OS enrolls with a link, without a terminal*: the server accepts and checks enrollments (tested end to end in `crates/banc-server/tests/enrollment.rs`); the agent that sends them does not exist yet.
-- *The admin sees the machines and their Resolve version*: the web admin lists them with their state, inventory and Resolve version, as soon as an agent reports.
-- *Resource targets at rest are met*: server measured (18.7 MB, no CPU at rest); agent and session helper to be measured once they do something.
+- *One machine of each OS enrolls with a link, without a terminal*: done end to end in tests (`crates/banc-agent/tests/agent.rs`: real server, real agent, enrollment through the local endpoint, iroh connection, restart, revocation). The click on the link, the administrator prompt and the window have to be checked by hand on each OS, with `cargo xtask bundle-app`.
+- *The admin sees the machines and their Resolve version*: the web admin lists them with their state, inventory and Resolve version. Resolve detection reads the sources of section 11, to be confirmed on real machines.
+- *Resource targets at rest are met*: on Linux, agent 5.2 MB alone and 10.2 MB enrolled and connected (0 to 2 CPU ticks a minute), session helper 2.9 MB (no tray icon on Linux), server 13.4 MB. macOS and Windows to be measured by hand (`docs/measurements.md`).
 
-Not done in phase 1 server side, on purpose or for later: TOTP for admins, rate limiting of the login, the server obtaining its own TLS certificate (phase 7), a `users` table.
+Not done in phase 1, on purpose or for later: TOTP for admins, rate limiting of the login, the server obtaining its own TLS certificate (phase 7), a `users` table, a tray icon on Linux, starting the session helper at login and signed installers (phase 7).
 
 ## 1. The product on one page
 
@@ -107,7 +107,7 @@ Agents on the same LAN find each other through iroh's local discovery and exchan
 
 The agent runs with admin rights and installs software. A compromised VPS must not be able to take advantage of that.
 
-- **Admin key.** On first setup, the admin's Banc application generates an Ed25519 key pair. The private key stays in the keychain of their workstation. Banc has them write down a recovery phrase on paper. The private key is never sent to the VPS.
+- **Admin key.** On first setup, the admin's Banc application generates an Ed25519 key pair. The private key stays in the keychain of their workstation. Banc has them write down a recovery code on paper (11 groups of 5 characters, with a checksum). The private key is never sent to the VPS.
 - **Signed manifest.** The manifest (Resolve version, packages with their hash and install command, enforced settings) is signed with the admin key. A manifest is published from the admin's Banc application, not from the browser.
 - **Fingerprint in the invitation.** The invitation link contains the fingerprint of the admin public key (`a=`). The workstation records it at enrollment. From then on it refuses any manifest whose signature does not match, and any package whose hash is not in a signed manifest.
 - **Banc updates.** Signed with a release key kept off the VPS (the developer's machine or a CI secret). The agent refuses an unsigned binary.
@@ -462,7 +462,7 @@ Acceptance:
 
 - Server: enrollment, invitations, machines, iroh endpoint and relay, minimal web admin.
 - Agent: machine key, connection, heartbeat, system service, session helper, `banc://` link, inventory, Resolve version detection.
-- Admin key: generation in the application, recovery phrase, fingerprint in the invitation.
+- Admin key: generation in the application, recovery code, fingerprint in the invitation.
 - `cargo xtask idle-bench`: the command has existed since phase 0 for the agent on Linux. Extend it to the session helper, macOS and Windows.
 
 Acceptance:

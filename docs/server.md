@@ -20,7 +20,7 @@ The server keeps in `data_dir`:
 - `server.key`: its iroh key, mode 0600. The VPS has no keychain;
 - `setup-token`: present only until the first admin exists.
 
-At rest the release build uses 18.7 MB of resident memory and no CPU (see `docs/measurements.md`).
+At rest the release build uses 13.4 MB of resident memory and no CPU (see `docs/measurements.md`).
 
 ## Joining the team
 
@@ -77,6 +77,6 @@ Every change (admin created, admin key set, invitation created or revoked, machi
 
 1. Start the server. With no admin, it writes `data_dir/setup-token` (mode 0600) and logs the file path, never the token.
 2. Open the web admin, enter the token, choose a name and a password (12 characters at least). The file is deleted.
-3. Register the admin key from the Banc application. Until then the web admin refuses to create invitations.
+3. Register the admin key from the Banc window ("Clé d'administration", see `docs/workstation.md`). Until then the web admin refuses to create invitations.
 
-Step 3 needs the application, which arrives with the agent side of phase 1.
+A systemd unit for the VPS is in `packaging/server/banc-server.service`; the full setup is step 1 of `docs/phase1-checklist.md`.

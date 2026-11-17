@@ -4,8 +4,8 @@
 
 | File | Trigger | Content |
 |---|---|---|
-| `ci.yml` | every push | The `cargo xtask check` steps, on Linux, in five jobs |
-| `pr.yml` | every PR and every update | `ci.yml`, clippy and tests on macOS and Windows, build of the five targets, idle measurement |
+| `ci.yml` | every push | The `cargo xtask check` steps, on Linux, in six jobs (the window has its own, with the WebKitGTK packages) |
+| `pr.yml` | every PR and every update | `ci.yml`, clippy and tests on macOS and Windows, the window on macOS and Windows, build of the five targets, idle measurement |
 | `pr-title.yml` | PR opened, updated or retitled | Title convention |
 | `nightly.yml` | every night at 2:17 UTC | Three OSes, five targets, the day's advisories, issue opened on failure |
 | `platforms.yml` | called by `pr.yml` and `nightly.yml` | The OS and target matrix |
@@ -40,11 +40,13 @@ GitHub only lists a check among the required checks after its first run. Open a 
 
 The plan asks for these checks, but they have nothing to test before the product exists.
 
-- **End-to-end tests** in `pr.yml`, with a server, a depot and two agents in containers. The server side of the enrollment scenario already runs in-process with `cargo nextest` (`crates/banc-server/tests/enrollment.rs`: real iroh endpoints and relay on 127.0.0.1, agent played by the test). The container job arrives with the agent, in the second half of phase 1, and is added to the `needs` list of `PR ready`.
-- **Idle measurement of the session helper.** `idle-bench` only measures the agent, because the session helper exits immediately in phase 0. To be extended in phase 1.
+- **End-to-end tests** in containers (`pr.yml`), with a server, a depot and two agents. Until the depot exists (phase 3), the end-to-end scenarios run in-process with `cargo nextest`: `crates/banc-server/tests/enrollment.rs` (server, iroh, relay) and `crates/banc-agent/tests/agent.rs` (a real server and a real agent: enrollment through the local endpoint, connection, restart, revocation). The container job arrives with the depot.
+- **Idle measurement on macOS and Windows.** `idle-bench` reads `/proc`. The session helper's tray icon only exists on those OSes: measured by hand until then (`docs/phase1-checklist.md`).
 - **Long tests** in `nightly.yml`, in phase 3.
 - **`release.yml`**, in phase 7.
 
 ## Cost
 
 macOS and Windows minutes are billed at a higher rate than Linux minutes on a private repository. Check current pricing. If the bill goes up, the first lever is to remove the `x86_64-apple-darwin` target from `pr.yml` and keep it for the nightly run.
+
+macOS arm64 runners are sometimes short: a job can wait in the queue, then be cancelled with "The job was not acquired by Runner of type hosted even after multiple attempts". That is GitHub's capacity, not the code: rerun the failed jobs (`gh run rerun <run> --failed`).
