@@ -133,5 +133,8 @@
   "error.no_admin_key": "Créez ou restaurez d'abord la clé.",
   "error.bad_server": "Adresse de serveur invalide.",
   "error.admin_key_exists": "Une autre clé est déjà enregistrée sur le serveur. Cochez « Remplacer » si c'est voulu.",
-  "error.bad_signature": "Signature refusée par le serveur."
+  "error.bad_signature": "Signature refusée par le serveur.",
+  "tray.open": "Ouvrir Banc",
+  "tray.quit": "Quitter",
+  "tray.not_enrolled": "Ce poste n'a pas encore rejoint d'équipe."
 }

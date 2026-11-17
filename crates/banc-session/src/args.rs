@@ -9,6 +9,7 @@ Usage: banc-session [options]
 
 Options:
   --log-dir <dir>  write the logs to this folder
+  --socket <path>  local endpoint of the agent
   --stderr         also copy the logs to standard error
   --version        print the version
   --help           print this help
@@ -17,6 +18,7 @@ Options:
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Options {
     pub log_dir: Option<PathBuf>,
+    pub socket: Option<PathBuf>,
     pub stderr: bool,
 }
 
@@ -34,6 +36,7 @@ pub fn parse(mut parser: lexopt::Parser) -> Result<Command, lexopt::Error> {
     while let Some(arg) = parser.next()? {
         match arg {
             Long("log-dir") => options.log_dir = Some(parser.value()?.into()),
+            Long("socket") => options.socket = Some(parser.value()?.into()),
             Long("stderr") => options.stderr = true,
             Long("version") => return Ok(Command::Version),
             Long("help") => return Ok(Command::Help),
@@ -58,9 +61,17 @@ mod tests {
 
     #[test]
     fn log_dir_and_stderr() {
-        let command = parse_args(&["--log-dir", "/tmp/logs", "--stderr"]).unwrap();
+        let command = parse_args(&[
+            "--log-dir",
+            "/tmp/logs",
+            "--stderr",
+            "--socket",
+            "/tmp/a.sock",
+        ])
+        .unwrap();
         let expected = Options {
             log_dir: Some(PathBuf::from("/tmp/logs")),
+            socket: Some(PathBuf::from("/tmp/a.sock")),
             stderr: true,
         };
         assert_eq!(command, Command::Run(expected));
