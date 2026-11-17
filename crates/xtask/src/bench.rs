@@ -4,6 +4,9 @@
 //! Two measurements: the agent alone, not enrolled, then the same agent
 //! enrolled and connected to a server with its relay (the `bench_server`
 //! example of `banc-agent`), which is the normal state of a workstation.
+//! Then the session helper (target: 10 MB), connected to that agent. On
+//! Linux it has no tray icon yet, so this is its floor; macOS and Windows
+//! are measured by hand (docs/measurements.md).
 //! The measurement reads `/proc`, so it only runs on Linux for now.
 
 use std::io::{BufRead, BufReader};
@@ -17,10 +20,15 @@ use crate::cmd::{cargo, output, run, say, tool};
 
 /// Maximum resident memory of the agent at rest, in kilobytes.
 const MAX_RSS_KB: u64 = 15 * 1024;
+/// Same for the session helper.
+const MAX_SESSION_RSS_KB: u64 = 10 * 1024;
 /// Maximum CPU at rest, in thousandths of elapsed time (1 = 0.1%).
 const MAX_CPU_PER_MILLE: u64 = 1;
-/// Time given to the agent to settle before a measurement.
+/// Time given to a process to settle before a measurement.
 const WARM_UP: Duration = Duration::from_secs(2);
+/// After its enrollment the agent sets up its connection, its relay and
+/// its network report: that is start-up work, not rest.
+const SETTLE_AFTER_ENROLLMENT: Duration = Duration::from_secs(10);
 /// Longest wait for the agent to connect after its enrollment.
 const CONNECT_LIMIT: Duration = Duration::from_secs(30);
 
@@ -58,6 +66,10 @@ pub fn idle_bench(root: &Path, seconds: u64) -> anyhow::Result<()> {
         "banc-agent",
         "--example",
         "bench_server",
+        "-p",
+        "banc-session",
+        "--bin",
+        "banc-session",
     ];
     run(cargo(&build).current_dir(root))?;
     let ticks_per_second: u64 = output(tool("getconf").arg("CLK_TCK"))?
@@ -87,8 +99,8 @@ pub fn idle_bench(root: &Path, seconds: u64) -> anyhow::Result<()> {
     let pid = agent.0.id();
 
     let mut failures = Vec::new();
-    let alone = measure_period(pid, seconds, "not enrolled")?;
-    failures.extend(check(&alone, seconds, ticks_per_second));
+    let alone = measure_period(pid, "banc-agent", seconds, "not enrolled")?;
+    failures.extend(check(&alone, MAX_RSS_KB, seconds, ticks_per_second));
 
     // Enrolled and connected.
     let mut server = Command::new(root.join("target/release/examples/bench_server"))
@@ -117,8 +129,27 @@ pub fn idle_bench(root: &Path, seconds: u64) -> anyhow::Result<()> {
         bail!("enrollment failed: {enroll}");
     }
     wait_connected(&binary, &socket)?;
-    let enrolled = measure_period(pid, seconds, "enrolled and connected")?;
-    failures.extend(check(&enrolled, seconds, ticks_per_second));
+    std::thread::sleep(SETTLE_AFTER_ENROLLMENT);
+    let enrolled = measure_period(pid, "banc-agent", seconds, "enrolled and connected")?;
+    failures.extend(check(&enrolled, MAX_RSS_KB, seconds, ticks_per_second));
+
+    let session = Command::new(root.join("target/release/banc-session"))
+        .arg("--log-dir")
+        .arg(work.join("logs"))
+        .arg("--socket")
+        .arg(&socket)
+        .stdin(Stdio::null())
+        .spawn()
+        .context("starting banc-session")?;
+    let session = KillOnDrop(session);
+    let measured = measure_period(session.0.id(), "banc-session", seconds, "next to the agent")?;
+    failures.extend(check(
+        &measured,
+        MAX_SESSION_RSS_KB,
+        seconds,
+        ticks_per_second,
+    ));
+    drop(session);
     drop(agent);
     drop(server);
 
@@ -148,11 +179,11 @@ fn wait_connected(binary: &Path, socket: &Path) -> anyhow::Result<()> {
 }
 
 /// Waits, then measures memory and the CPU used over `seconds`.
-fn measure_period(pid: u32, seconds: u64, label: &str) -> anyhow::Result<Measure> {
+fn measure_period(pid: u32, name: &str, seconds: u64, label: &str) -> anyhow::Result<Measure> {
     std::thread::sleep(WARM_UP);
     let before = measure(pid)?;
     say(&format!(
-        "measuring banc-agent at rest, {label}, for {seconds} s..."
+        "measuring {name} at rest, {label}, for {seconds} s..."
     ));
     std::thread::sleep(Duration::from_secs(seconds));
     let after = measure(pid)?;
@@ -163,24 +194,24 @@ fn measure_period(pid: u32, seconds: u64, label: &str) -> anyhow::Result<Measure
 }
 
 /// Prints the measure; returns what exceeds the targets.
-fn check(measure: &Measure, seconds: u64, ticks_per_second: u64) -> Vec<String> {
+fn check(measure: &Measure, max_rss_kb: u64, seconds: u64, ticks_per_second: u64) -> Vec<String> {
     let allowed = allowed_ticks(seconds, ticks_per_second);
     let cpu_percent = measure.cpu_ticks as f64 * 100.0 / (seconds * ticks_per_second) as f64;
     say(&format!(
         "  resident memory: {:.1} MB (target: under {} MB)",
         measure.rss_kb as f64 / 1024.0,
-        MAX_RSS_KB / 1024
+        max_rss_kb / 1024
     ));
     say(&format!(
         "  CPU: {cpu_percent:.2}% ({} tick(s) in {seconds} s, {allowed} allowed)",
         measure.cpu_ticks
     ));
     let mut failures = Vec::new();
-    if measure.rss_kb >= MAX_RSS_KB {
-        failures.push("the agent exceeds the memory target at rest".to_owned());
+    if measure.rss_kb >= max_rss_kb {
+        failures.push("memory target exceeded at rest".to_owned());
     }
     if measure.cpu_ticks > allowed {
-        failures.push("the agent uses CPU at rest".to_owned());
+        failures.push("CPU used at rest".to_owned());
     }
     failures
 }
@@ -193,7 +224,7 @@ fn allowed_ticks(seconds: u64, ticks_per_second: u64) -> u64 {
 fn measure(pid: u32) -> anyhow::Result<Measure> {
     let read = |file: &str| {
         let path = format!("/proc/{pid}/{file}");
-        std::fs::read_to_string(&path).with_context(|| format!("reading {path} (agent stopped?)"))
+        std::fs::read_to_string(&path).with_context(|| format!("reading {path} (process stopped?)"))
     };
     Ok(Measure {
         rss_kb: parse_rss_kb(&read("status")?).context("VmRSS missing from /proc/<pid>/status")?,

@@ -62,10 +62,10 @@ enum Command {
         #[arg(long = "target")]
         targets: Vec<String>,
     },
-    /// Measures the agent's memory and CPU at rest (Linux)
+    /// Measures the agent and the session helper at rest (Linux)
     IdleBench {
         /// Measurement duration
-        #[arg(long, default_value_t = 30)]
+        #[arg(long, default_value_t = 60)]
         seconds: u64,
     },
 }
