@@ -17,6 +17,8 @@ The versions in this table are those of `.github/workflows/ci.yml`. Change both 
 
 To build the Linux arm64 target from an amd64 machine, you also need `gcc-aarch64-linux-gnu`.
 
+The window (`ui/src-tauri`, step `app`) needs the Tauri prerequisites. On Debian or Ubuntu: `sudo apt-get install libwebkit2gtk-4.1-dev librsvg2-dev libxdo-dev`. Nothing more on macOS (Xcode command line tools) and Windows (WebView2 is part of Windows 11). On a Linux machine without them, run the other steps: `cargo xtask check fmt architecture clippy tests migrations frontend python deny secrets commits`.
+
 ## Commands
 
 | Command | Effect |
@@ -26,11 +28,13 @@ To build the Linux arm64 target from an amd64 machine, you also need `gcc-aarch6
 | `cargo xtask hooks` | Enables the repository's `commit-msg` hook |
 | `cargo xtask schema` | Rewrites `migrations/schema.sql` after adding a migration |
 | `cargo xtask dev-server` | Server with `dev/server.toml`, data in `.dev/`, web admin on http://localhost:8080 |
-| `cargo xtask dev-agent` | Agent in the foreground, logs in `.dev/logs` |
+| `cargo xtask dev-agent` | Agent in the foreground, data in `.dev/agent`, endpoint `.dev/agent.sock` |
 | `cargo xtask dev-ui` | Frontend in development mode, `/api` proxied to the dev server |
+| `cargo xtask dev-app` | The window, connected to the development agent; needs `dev-ui` running |
+| `cargo xtask bundle-app` | The window with the agent and the session helper beside it, for a test machine |
 | `cargo xtask dist` | Release binaries for the current machine in `dist/<target>/` |
 | `cargo xtask dist --target <target>` | Same for another target, option can be repeated |
-| `cargo xtask idle-bench` | Agent memory and CPU at rest, on Linux |
+| `cargo xtask idle-bench` | Memory and CPU at rest, on Linux: agent alone, agent enrolled, session helper |
 | `cargo xtask pr-title "<title>"` | Checks a PR title |
 
 ## The `check` steps
@@ -43,6 +47,7 @@ To build the Linux arm64 target from an amd64 machine, you also need `gcc-aarch6
 | `tests` | `cargo nextest run --workspace --locked`, then the doc tests |
 | `migrations` | Applies the migrations to an empty database and compares the schema with `migrations/schema.sql` |
 | `frontend` | In `ui/`: `pnpm install --frozen-lockfile`, `lint`, `check`, `test`, `build` |
+| `app` | Builds `ui/`, then in `ui/src-tauri`: `cargo fmt --check`, `clippy`, `test`, `cargo deny` |
 | `python` | `ruff check`, `ruff format --check`, compilation of each script in `resolve-scripts/` |
 | `deny` | `cargo deny --locked check` |
 | `secrets` | `gitleaks` on the branch's commits and on uncommitted changes |
@@ -60,7 +65,19 @@ cat .dev/server/setup-token
 
 Open http://localhost:8080, enter the token and create the first admin. To start again from an empty server, stop it and delete `.dev/server`.
 
-Creating invitations needs the admin key, registered from the Banc application. Until the application exists, the end-to-end test `crates/banc-server/tests/enrollment.rs` plays that part. How the server works is described in `docs/server.md`.
+Creating invitations needs the admin key, registered from the window ("Clé d'administration").
+
+## Running a workstation locally
+
+```bash
+cargo xtask dev-agent          # data in .dev/agent, no root needed
+cargo run -p banc-agent -- status --socket .dev/agent.sock
+cargo run -p banc-agent -- enroll '<banc://join link>' --socket .dev/agent.sock
+```
+
+The window: `cargo xtask dev-ui` in one terminal, `cargo xtask dev-app` in another. It talks to the development agent (`BANC_AGENT_SOCKET`). The server only accepts `http://` for `localhost`: against a remote server, use its `https://` address.
+
+How the server works is described in `docs/server.md`, the workstation side in `docs/workstation.md`.
 
 ## Commit messages
 
