@@ -14,6 +14,12 @@ all-features = true
 [advisories]
 version = 2
 yanked = "deny"
+# "Unmaintained" notices for crates that iroh pulls in, without a known
+# vulnerability. To be removed as soon as iroh drops them.
+ignore = [
+  { id = "RUSTSEC-2026-0543", reason = "chrono: via iroh-relay (tokio-rustls-acme) and netwatch (wmi)" },
+  { id = "RUSTSEC-2024-0436", reason = "paste: via iroh (netwatch, netlink-packet-core)" },
+]
 
 [licenses]
 version = 2
@@ -21,11 +27,16 @@ version = 2
 # permissive licenses are allowed. Adding a license here is a decision to
 # make in review, not a reflex.
 #
-# Phase 1 adds BSD-2-Clause and BSD-3-Clause, for the Ed25519 keys of the
-# iroh tree (curve25519-dalek, ed25519-dalek, subtle, spez). Both are
-# permissive, attribution only.
-allow = ["MIT", "Apache-2.0", "Unicode-3.0", "Zlib", "BSD-2-Clause", "BSD-3-Clause"]
+# Phase 1 adds the licenses of the iroh tree: BSD-2-Clause and BSD-3-Clause
+# (curve25519-dalek, ed25519-dalek, subtle, matchit, sha1_smol, spez) and ISC
+# (ring, rustls-webpki, untrusted). All three are permissive, attribution
+# only.
+allow = ["MIT", "Apache-2.0", "Unicode-3.0", "Zlib", "BSD-2-Clause", "BSD-3-Clause", "ISC"]
 confidence-threshold = 0.9
+# Mozilla's root certificates, as data. Allowed for this crate only.
+exceptions = [
+  { crate = "webpki-roots", allow = ["CDLA-Permissive-2.0"] },
+]
 
 [licenses.private]
 # The workspace crates are not published.
@@ -35,9 +46,19 @@ ignore = true
 multiple-versions = "deny"
 wildcards = "deny"
 allow-wildcard-paths = true
-# iroh brings two versions of these crates. Each entry names the older one;
-# remove it when iroh catches up (cargo deny warns about unused skips).
+# iroh 1.4 brings two versions of these crates. Each entry names the older
+# one; remove it when iroh catches up (cargo deny warns about unused skips).
 skip = [
+  { crate = "base64@0.22.1", reason = "iroh-relay (pem, tokio-rustls-acme)" },
+  { crate = "cpufeatures@0.2.17", reason = "iroh (noq-proto, aes-gcm)" },
+  { crate = "crypto-common@0.1.7", reason = "iroh (noq-proto, aes-gcm)" },
+  { crate = "getrandom@0.2.17", reason = "iroh (ring)" },
+  { crate = "hashbrown@0.14.5", reason = "iroh-relay (dashmap)" },
+  { crate = "netdev@0.45.1", reason = "iroh (netwatch)" },
+  { crate = "netlink-packet-core@0.8.2", reason = "iroh (netwatch)" },
+  { crate = "netlink-packet-route@0.31.0", reason = "iroh (netwatch)" },
+  { crate = "netlink-sys@0.8.8", reason = "iroh (netwatch)" },
+  { crate = "pem@3.0.6", reason = "iroh-relay (tokio-rustls-acme)" },
   { crate = "syn@2.0.119", reason = "syn 3 arrives with iroh, the rest of the tree is on syn 2" },
   { crate = "synstructure@0.13.2", reason = "follows syn 2" },
 ]
