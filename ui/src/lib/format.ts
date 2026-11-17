@@ -1,5 +1,6 @@
 // Display helpers for the admin. All text comes from fr.json.
 import { ApiError } from './api';
+import { CommandError } from './agent';
 import { hasMessage, t } from './i18n';
 
 /** "il y a 5 min" from Unix seconds. `null`: never. */
@@ -24,7 +25,7 @@ export function relativeTime(then: number | null, now: number): string {
 
 /** French text for any error caught in the admin. */
 export function errorMessage(error: unknown): string {
-  if (error instanceof ApiError) {
+  if (error instanceof ApiError || error instanceof CommandError) {
     const key = `error.${error.code}`;
     return hasMessage(key) ? t(key) : t('error.unknown');
   }

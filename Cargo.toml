@@ -1,6 +1,9 @@
 [workspace]
 resolver = "2"
 members = ["crates/*"]
+# The Tauri application is its own workspace: building it needs webkit2gtk
+# on Linux, which the checks of the other crates must not depend on.
+exclude = ["ui/src-tauri"]
 
 [workspace.package]
 version = "0.0.0"
