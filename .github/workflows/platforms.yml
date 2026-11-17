@@ -34,6 +34,34 @@ jobs:
           tool: cargo-nextest@0.9.151
       - run: cargo xtask check clippy tests
 
+  app:
+    name: Window (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/rust
+        with:
+          cache-key: app
+          workspaces: |
+            . -> target
+            ui/src-tauri -> target
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny@0.20.2
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: ui/package.json
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: ui/pnpm-lock.yaml
+      - run: cargo xtask check app
+
   cibles:
     name: Build (${{ matrix.target }})
     strategy:

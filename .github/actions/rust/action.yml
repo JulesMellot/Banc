@@ -7,6 +7,9 @@ inputs:
   cache-key:
     description: Key that tells apart the caches of different jobs.
     default: ''
+  workspaces:
+    description: Cargo workspaces to cache, as Swatinem/rust-cache expects them.
+    default: ". -> target"
 runs:
   using: composite
   steps:
@@ -23,3 +26,4 @@ runs:
     - uses: Swatinem/rust-cache@v2
       with:
         key: ${{ inputs.cache-key }}
+        workspaces: ${{ inputs.workspaces }}

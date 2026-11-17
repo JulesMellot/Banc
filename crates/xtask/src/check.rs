@@ -23,6 +23,8 @@ pub enum Step {
     Migrations,
     /// Frontend: lint, svelte-check, vitest, build
     Frontend,
+    /// The Tauri window (ui/src-tauri): fmt, clippy, tests, cargo deny
+    App,
     /// Python scripts for the Resolve bridge: ruff and compilation
     Python,
     /// cargo deny: vulnerabilities, licenses, duplicates, sources
@@ -103,6 +105,7 @@ fn run_step(root: &Path, step: Step, base: &str) -> anyhow::Result<()> {
             }
             Ok(())
         }
+        Step::App => app(root),
         Step::Python => python(root),
         Step::Deny => run(cargo(&["deny", "--locked", "check"]).current_dir(root)),
         Step::Secrets => {
@@ -124,6 +127,23 @@ fn run_step(root: &Path, step: Step, base: &str) -> anyhow::Result<()> {
         }
         Step::Commits => commit_messages(root, base),
     }
+}
+
+/// The window is a separate Cargo workspace: on Linux it needs webkit2gtk
+/// (see docs/development.md), which the other steps must not require. Its
+/// build embeds `ui/dist`, so the frontend is built first.
+fn app(root: &Path) -> anyhow::Result<()> {
+    let ui = root.join("ui");
+    for args in [&["install", "--frozen-lockfile"][..], &["build"]] {
+        run(tool("pnpm").args(args).current_dir(&ui))?;
+    }
+    let app = ui.join("src-tauri");
+    run(cargo(&["fmt", "--check"]).current_dir(&app))?;
+    run(cargo(&["clippy", "--all-targets", "--locked"])
+        .args(["--", "-D", "warnings"])
+        .current_dir(&app))?;
+    run(cargo(&["test", "--locked"]).current_dir(&app))?;
+    run(cargo(&["deny", "--locked", "check"]).current_dir(&app))
 }
 
 const PYTHON_DIR: &str = "resolve-scripts";
