@@ -13,3 +13,4 @@ pub mod paths;
 pub mod secrets;
 pub mod service;
 pub mod signal;
+pub mod tray;
