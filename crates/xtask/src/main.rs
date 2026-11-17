@@ -65,7 +65,7 @@ enum Command {
     /// Measures the agent's memory and CPU at rest (Linux)
     IdleBench {
         /// Measurement duration
-        #[arg(long, default_value_t = 10)]
+        #[arg(long, default_value_t = 30)]
         seconds: u64,
     },
 }
