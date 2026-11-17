@@ -20,7 +20,11 @@ version = 2
 # Banc is an internal tool, shipped as binaries to the workstations: only
 # permissive licenses are allowed. Adding a license here is a decision to
 # make in review, not a reflex.
-allow = ["MIT", "Apache-2.0", "Unicode-3.0", "Zlib"]
+#
+# Phase 1 adds BSD-2-Clause and BSD-3-Clause, for the Ed25519 keys of the
+# iroh tree (curve25519-dalek, ed25519-dalek, subtle, spez). Both are
+# permissive, attribution only.
+allow = ["MIT", "Apache-2.0", "Unicode-3.0", "Zlib", "BSD-2-Clause", "BSD-3-Clause"]
 confidence-threshold = 0.9
 
 [licenses.private]
@@ -31,6 +35,12 @@ ignore = true
 multiple-versions = "deny"
 wildcards = "deny"
 allow-wildcard-paths = true
+# iroh brings two versions of these crates. Each entry names the older one;
+# remove it when iroh catches up (cargo deny warns about unused skips).
+skip = [
+  { crate = "syn@2.0.119", reason = "syn 3 arrives with iroh, the rest of the tree is on syn 2" },
+  { crate = "synstructure@0.13.2", reason = "follows syn 2" },
+]
 # OpenSSL complicates cross-compiling the five targets: TLS goes through rustls.
 deny = [
   { crate = "openssl-sys", reason = "use rustls" },
