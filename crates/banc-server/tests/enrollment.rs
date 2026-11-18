@@ -319,6 +319,7 @@ async fn enrollment_then_control_channel_then_revocation() {
         ServerMessage::Welcome {
             machine_id: enrolled.machine_id,
             heartbeat_secs: 300,
+            packages: true,
         }
     );
     let online = wait_online(&harness, &cookie, true).await;

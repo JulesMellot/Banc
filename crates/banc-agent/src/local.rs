@@ -50,6 +50,10 @@ pub async fn answer(request: Request, shared: &Arc<Shared>) -> Response {
     match request {
         Request::Status => Response::Status(shared.status()),
         Request::Enroll { invite, name } => enroll_request(invite, name, shared).await,
+        Request::ConfirmManual { id } => {
+            shared.confirm_manual(id);
+            Response::Status(shared.status())
+        }
     }
 }
 

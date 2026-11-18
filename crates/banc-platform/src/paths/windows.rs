@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use super::{required, Env, PathError, Scope};
+use super::{required, Env, PathError, ResolveDirs, Scope};
 
 pub(super) fn log_dir(scope: Scope, env: Env<'_>) -> Result<PathBuf, PathError> {
     let name = match scope {
@@ -18,6 +18,20 @@ pub(super) fn state_dir(scope: Scope, env: Env<'_>) -> Result<PathBuf, PathError
         Scope::User => "LOCALAPPDATA",
     };
     Ok(required(env, name)?.join("Banc"))
+}
+
+pub(super) fn resolve_dirs(env: Env<'_>) -> Result<ResolveDirs, PathError> {
+    let resolve = required(env, "PROGRAMDATA")?
+        .join("Blackmagic Design")
+        .join("DaVinci Resolve");
+    Ok(ResolveDirs {
+        ofx: required(env, "CommonProgramFiles")?
+            .join("OFX")
+            .join("Plugins"),
+        lut: resolve.join("Support").join("LUT"),
+        fusion_templates: resolve.join("Fusion").join("Templates"),
+        scripts: resolve.join("Fusion").join("Scripts"),
+    })
 }
 
 #[cfg(test)]
@@ -47,6 +61,23 @@ mod tests {
             PathBuf::from(r"C:\ProgramData\Banc")
         );
         assert_eq!(super::AGENT_SOCKET, r"\\.\pipe\banc-agent");
+    }
+
+    #[test]
+    fn resolve_folders() {
+        let env = fake_env(&[
+            ("PROGRAMDATA", r"C:\ProgramData"),
+            ("CommonProgramFiles", r"C:\Program Files\Common Files"),
+        ]);
+        let dirs = resolve_dirs(&env).unwrap();
+        assert_eq!(
+            dirs.ofx,
+            PathBuf::from(r"C:\Program Files\Common Files\OFX\Plugins")
+        );
+        assert_eq!(
+            dirs.lut,
+            PathBuf::from(r"C:\ProgramData\Blackmagic Design\DaVinci Resolve\Support\LUT")
+        );
     }
 
     #[test]

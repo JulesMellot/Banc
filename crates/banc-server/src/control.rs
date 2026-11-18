@@ -11,6 +11,7 @@ use banc_proto::control::{self, close, AgentMessage, ServerMessage, HEARTBEAT_IN
 use banc_proto::keys::PublicKey;
 use iroh::endpoint::{Connection, RecvStream, SendStream};
 use iroh::protocol::{AcceptError, ProtocolHandler};
+use tokio::sync::watch;
 
 use crate::state::AppState;
 use crate::store;
@@ -120,14 +121,16 @@ async fn serve(state: &AppState, connection: Connection) {
         }
     };
 
+    // Before the welcome: a manifest published from now on is announced.
+    let manifests = state.manifest_version.subscribe();
     match handshake(state, &connection, machine.id).await {
-        // The server has nothing else to say for now. The send half stays
-        // open for the whole connection so that later phases can push
-        // notifications on it.
-        Ok((_send, mut recv)) => {
+        Ok((send, mut recv)) => {
             state.connections.register(key, connection.clone());
             tracing::info!(machine = machine.id, name = %machine.name, "machine connected");
-            let end = follow(state, &mut recv, machine.id).await;
+            let end = tokio::select! {
+                end = follow(state, &mut recv, machine.id) => end,
+                () = announce(send, manifests) => End::Closed,
+            };
             state.connections.unregister(&key, connection.stable_id());
             if let End::Refused(code, reason) = end {
                 connection.close(code.into(), reason.as_bytes());
@@ -178,11 +181,25 @@ async fn handshake(
     let welcome = ServerMessage::Welcome {
         machine_id,
         heartbeat_secs: HEARTBEAT_INTERVAL.as_secs(),
+        packages: true,
     };
     control::write_frame(&mut send, &welcome)
         .await
         .map_err(|_| End::Closed)?;
     Ok((send, recv))
+}
+
+/// Tells the agent about each new manifest, until the connection is cut.
+async fn announce(mut send: SendStream, mut manifests: watch::Receiver<u64>) {
+    while manifests.changed().await.is_ok() {
+        let version = *manifests.borrow_and_update();
+        let notice = ServerMessage::ManifestPublished { version };
+        if control::write_frame(&mut send, &notice).await.is_err() {
+            return;
+        }
+    }
+    // The server is stopping: `follow` ends with the connection.
+    std::future::pending::<()>().await;
 }
 
 /// Heartbeats and reports until the connection ends.
@@ -200,6 +217,9 @@ async fn follow(state: &AppState, recv: &mut RecvStream, machine_id: i64) -> End
             AgentMessage::Heartbeat => store::touch_machine(&state.db(), machine_id, now),
             AgentMessage::Report { inventory } => {
                 store::record_report(&mut state.db(), machine_id, inventory, now)
+            }
+            AgentMessage::Packages { report } => {
+                store::record_packages(&state.db(), machine_id, report, now)
             }
             AgentMessage::Hello { .. } => return End::Refused(close::PROTOCOL, "second hello"),
         };

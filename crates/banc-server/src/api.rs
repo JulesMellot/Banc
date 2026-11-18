@@ -9,22 +9,23 @@
 
 use std::sync::Arc;
 
-use axum::extract::{FromRequestParts, Path, State};
+use axum::extract::{DefaultBodyLimit, FromRequestParts, Path, Query, State};
 use axum::http::header::{CONTENT_TYPE, COOKIE, SET_COOKIE};
 use axum::http::request::Parts;
 use axum::http::{HeaderMap, HeaderValue, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{any, get, post};
+use axum::routing::{any, get, post, put};
 use axum::{Json, Router};
 use banc_proto::enroll::{self, EnrollRequest, EnrollResponse, ServerInfo};
 use banc_proto::invite::{Invite, InviteToken};
 use banc_proto::keys::{AdminKeyRegistration, Fingerprint, PublicKey};
 use banc_proto::machine::{MachineRole, PersonRole};
+use banc_proto::manifest::{self, Manifest, SignedManifest};
 use serde::{Deserialize, Serialize};
 
 use crate::state::AppState;
 use crate::store::{self, EnrollError, EnrollRefusal, StoreError};
-use crate::{auth, relay_proxy};
+use crate::{auth, packages, relay_proxy};
 
 /// Session cookie name.
 const SESSION_COOKIE: &str = "banc_session";
@@ -54,6 +55,18 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/v1/admin/invites/{id}/revoke", post(revoke_invite))
         .route("/api/v1/admin/machines", get(list_machines))
         .route("/api/v1/admin/machines/{id}/revoke", post(revoke_machine))
+        .route(
+            "/api/v1/admin/packages/files",
+            get(list_package_files)
+                .post(upload_package_file)
+                .layer(DefaultBodyLimit::disable()),
+        )
+        .route("/api/v1/admin/packages/grid", get(packages_grid))
+        .route(
+            "/api/v1/admin/manifest",
+            get(get_manifest).post(publish_manifest),
+        )
+        .route("/api/v1/admin/manifest/draft", put(put_manifest_draft))
         .route(relay_proxy::RELAY_PATH, any(relay))
         .route(relay_proxy::PROBE_PATH, any(relay))
         .route(relay_proxy::CAPTIVE_PORTAL_PATH, any(relay));
@@ -655,6 +668,194 @@ async fn revoke_machine(
     };
     state.connections.disconnect(&key);
     tracing::warn!(admin = admin.id, machine = id, "machine revoked");
+    Ok(StatusCode::NO_CONTENT)
+}
+
+// ---------------------------------------------------------------- packages
+
+async fn list_package_files(
+    State(state): State<Arc<AppState>>,
+    _admin: AdminSession,
+) -> AppResult<Json<Vec<store::PackageFileRow>>> {
+    Ok(Json(store::list_package_files(&state.db())?))
+}
+
+#[derive(Deserialize)]
+struct UploadQuery {
+    name: String,
+}
+
+/// Stores a file. Its raw content is the body: the content type is one a
+/// cross-site form cannot send.
+async fn upload_package_file(
+    State(state): State<Arc<AppState>>,
+    AdminSession(admin): AdminSession,
+    Query(query): Query<UploadQuery>,
+    headers: HeaderMap,
+    body: axum::body::Body,
+) -> AppResult<Json<store::PackageFileRow>> {
+    let binary = headers
+        .get(CONTENT_TYPE)
+        .is_some_and(|value| value.as_bytes() == b"application/octet-stream");
+    if !binary {
+        return Err(ApiError::bad_request(
+            "bad_request",
+            "the file must be sent as application/octet-stream",
+        ));
+    }
+    if !manifest::is_file_name(&query.name) {
+        return Err(ApiError::bad_request("bad_file_name", "invalid file name"));
+    }
+    let stored = packages::receive(&state.packages_dir, body.into_data_stream())
+        .await
+        .map_err(|error| match error {
+            packages::ReceiveError::TooLarge => ApiError::new(
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "package_too_large",
+                "the file is larger than the store accepts",
+            ),
+            packages::ReceiveError::Interrupted => {
+                ApiError::bad_request("upload_interrupted", "the upload was interrupted")
+            }
+            packages::ReceiveError::Io(error) => ApiError::internal(&error),
+        })?;
+    let row = store::PackageFileRow {
+        blake3: stored.blake3,
+        name: query.name,
+        size: stored.size,
+        uploaded_at: state.now(),
+    };
+    let row = store::add_package_file(&state.db(), &row, admin.id)?;
+    tracing::info!(admin = admin.id, file = %row.name, size = row.size, "package file stored");
+    Ok(Json(row))
+}
+
+async fn packages_grid(
+    State(state): State<Arc<AppState>>,
+    _admin: AdminSession,
+) -> AppResult<Json<Vec<store::MachinePackages>>> {
+    Ok(Json(store::machine_packages(&state.db())?))
+}
+
+#[derive(Serialize)]
+struct PublishedView {
+    version: u64,
+    published_at: i64,
+    manifest: Manifest,
+}
+
+#[derive(Serialize)]
+struct ManifestView {
+    /// The manifest that applies, as the server received it.
+    published: Option<PublishedView>,
+    /// What the next publication will contain.
+    draft: store::ManifestDraft,
+    /// Whether the draft differs from what is published.
+    changed: bool,
+    /// The version the next publication must carry.
+    next_version: u64,
+}
+
+fn latest_manifest(state: &AppState) -> AppResult<Option<PublishedView>> {
+    let Some(latest) = store::latest_manifest(&state.db())? else {
+        return Ok(None);
+    };
+    let manifest =
+        serde_json::from_str(&latest.signed.payload).map_err(|e| ApiError::internal(&e))?;
+    Ok(Some(PublishedView {
+        version: latest.version,
+        published_at: latest.published_at,
+        manifest,
+    }))
+}
+
+async fn get_manifest(
+    State(state): State<Arc<AppState>>,
+    _admin: AdminSession,
+) -> AppResult<Json<ManifestView>> {
+    let published = latest_manifest(&state)?;
+    let current = published
+        .as_ref()
+        .map(|view| store::ManifestDraft::from(view.manifest.clone()));
+    let draft = store::manifest_draft(&state.db())?;
+    let changed = draft.is_some() && draft != current;
+    let next_version = published.as_ref().map_or(1, |view| view.version + 1);
+    Ok(Json(ManifestView {
+        published,
+        draft: draft.or(current).unwrap_or_default(),
+        changed,
+        next_version,
+    }))
+}
+
+/// Every file a manifest lists must be in the store, with the same size.
+fn check_files(state: &AppState, manifest: &Manifest) -> AppResult<()> {
+    let db = state.db();
+    let files = manifest
+        .packages
+        .iter()
+        .flat_map(|package| &package.builds)
+        .filter_map(|build| build.file.as_ref());
+    for file in files {
+        if store::package_file_size(&db, &file.blake3)? != Some(file.size) {
+            return Err(ApiError::bad_request(
+                "package_file_missing",
+                format!("the file `{}` is not in the package store", file.name),
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Saves the draft. It is checked now, so that the admin learns about a
+/// mistake while editing rather than when signing.
+async fn put_manifest_draft(
+    State(state): State<Arc<AppState>>,
+    AdminSession(admin): AdminSession,
+    Body(draft): Body<store::ManifestDraft>,
+) -> AppResult<StatusCode> {
+    let manifest = draft.clone().into_manifest(1);
+    manifest
+        .check()
+        .map_err(|error| ApiError::bad_request("bad_manifest", error.to_string()))?;
+    check_files(&state, &manifest)?;
+    store::save_manifest_draft(&state.db(), &draft, admin.id, state.now())?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Publishes a manifest signed by the admin's application. The server only
+/// holds on to what the team's admin key signed.
+async fn publish_manifest(
+    State(state): State<Arc<AppState>>,
+    AdminSession(admin): AdminSession,
+    Body(signed): Body<SignedManifest>,
+) -> AppResult<StatusCode> {
+    let key = store::admin_key(&state.db())?.ok_or_else(|| {
+        ApiError::new(
+            StatusCode::CONFLICT,
+            "admin_key_missing",
+            "register the admin key from the Banc application first",
+        )
+    })?;
+    let manifest = signed
+        .open(&key, None)
+        .map_err(|error| ApiError::bad_request("bad_signature", error.to_string()))?;
+    check_files(&state, &manifest)?;
+    let version = manifest.version;
+    {
+        let mut db = state.db();
+        let next = store::latest_manifest(&db)?.map_or(1, |latest| latest.version + 1);
+        if version != next {
+            return Err(ApiError::new(
+                StatusCode::CONFLICT,
+                "manifest_stale",
+                format!("the next manifest is version {next}"),
+            ));
+        }
+        store::publish_manifest(&mut db, version, &signed, admin.id, state.now())?;
+    }
+    state.manifest_version.send_replace(version);
+    tracing::warn!(admin = admin.id, version, "manifest published");
     Ok(StatusCode::NO_CONTENT)
 }
 

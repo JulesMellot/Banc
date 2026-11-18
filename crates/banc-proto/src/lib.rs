@@ -12,6 +12,7 @@ pub mod keys;
 pub mod local;
 pub mod machine;
 pub mod manifest;
+pub mod packages;
 mod text;
 pub mod update;
 

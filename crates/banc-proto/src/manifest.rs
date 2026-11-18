@@ -19,6 +19,16 @@ const MANIFEST_DOMAIN: &str = "banc/manifest/1";
 const MAX_NAME: usize = 64;
 /// Architectures a package can be built for.
 const ARCHES: [&str; 2] = ["x86_64", "aarch64"];
+/// Most packages in a manifest: a workstation's report must fit in one
+/// control frame.
+pub const MAX_PACKAGES: usize = 100;
+/// Longest file name of a build.
+const MAX_FILE_NAME: usize = 128;
+/// Longest instructions of a manual package, in bytes.
+pub const MAX_INSTRUCTIONS: usize = 300;
+/// Most arguments of an installer, and the longest one.
+const MAX_ARGS: usize = 16;
+const MAX_ARG: usize = 256;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ManifestError {
@@ -62,12 +72,28 @@ impl PackageKind {
     }
 }
 
+/// Where a `copy` package goes. Each OS has its own folder for each place.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Place {
+    /// OFX plugins (`.ofx.bundle`).
+    Ofx,
+    Lut,
+    /// Fusion templates and macros, for every user of the workstation.
+    FusionTemplates,
+    /// Resolve scripts, for every user of the workstation.
+    Scripts,
+}
+
 /// The file of a build, identified by its content.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PackageFile {
     /// BLAKE3 of the content, in hexadecimal.
     pub blake3: String,
     pub size: u64,
+    /// Name given to the file on the workstation. A `.zip` is unpacked by
+    /// `copy` and `font`.
+    pub name: String,
 }
 
 /// One variant of a package, for an OS and possibly an architecture.
@@ -81,6 +107,15 @@ pub struct PackageBuild {
     /// `None` only for a manual package.
     #[serde(default)]
     pub file: Option<PackageFile>,
+    /// Where a `copy` package goes.
+    #[serde(default)]
+    pub place: Option<Place>,
+    /// Arguments of an `exe` or `run` installer, for a silent installation.
+    #[serde(default)]
+    pub args: Vec<String>,
+    /// What a person has to do, for a `manual` package.
+    #[serde(default)]
+    pub instructions: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -136,15 +171,46 @@ fn check_build(id: &str, build: &PackageBuild) -> Result<(), ManifestError> {
             return malformed(format!("package `{id}`: architecture `{arch}`"));
         }
     }
+    if build.place.is_some() != (build.kind == PackageKind::Copy) {
+        return malformed(format!("package `{id}`: place"));
+    }
+    let takes_args = matches!(build.kind, PackageKind::Exe | PackageKind::Run);
+    let args_valid = build.args.len() <= MAX_ARGS
+        && build
+            .args
+            .iter()
+            .all(|arg| arg.len() <= MAX_ARG && !arg.contains('\0'));
+    if !args_valid || (!takes_args && !build.args.is_empty()) {
+        return malformed(format!("package `{id}`: arguments"));
+    }
+    let manual = build.kind == PackageKind::Manual;
+    let instructions_valid = build
+        .instructions
+        .as_ref()
+        .is_some_and(|text| !text.trim().is_empty() && text.len() <= MAX_INSTRUCTIONS);
+    if manual != instructions_valid || (!manual && build.instructions.is_some()) {
+        return malformed(format!("package `{id}`: instructions"));
+    }
     match &build.file {
+        Some(_) if manual => malformed(format!("package `{id}`: a manual package has no file")),
         Some(file) if text::hex_exact::<32>(&file.blake3).is_none() => {
             malformed(format!("package `{id}`: file hash"))
         }
-        None if build.kind != PackageKind::Manual => {
-            malformed(format!("package `{id}`: file missing"))
-        }
+        Some(file) if !is_file_name(&file.name) => malformed(format!("package `{id}`: file name")),
+        None if !manual => malformed(format!("package `{id}`: file missing")),
         _ => Ok(()),
     }
+}
+
+/// A plain file name: it can never lead out of the folder it is written to.
+pub fn is_file_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= MAX_FILE_NAME
+        && !name.starts_with('.')
+        && !name.ends_with(['.', ' '])
+        && !name.chars().any(|c| {
+            c.is_control() || matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|')
+        })
 }
 
 /// Lowercase letters, digits and dashes.
@@ -202,9 +268,13 @@ pub struct Manifest {
 }
 
 impl Manifest {
-    fn check(&self) -> Result<(), ManifestError> {
+    /// Whether the manifest can be signed and applied.
+    pub fn check(&self) -> Result<(), ManifestError> {
         if self.version == 0 {
             return malformed("version 0");
+        }
+        if self.packages.len() > MAX_PACKAGES {
+            return malformed("too many packages");
         }
         if let Some(resolve) = &self.resolve {
             resolve.check()?;
@@ -278,15 +348,20 @@ mod tests {
         Some(PackageFile {
             blake3: "ab".repeat(32),
             size: 10,
+            name: "plugin.zip".to_owned(),
         })
     }
 
     fn build(os: Os, arch: Option<&str>, kind: PackageKind) -> PackageBuild {
+        let manual = kind == PackageKind::Manual;
         PackageBuild {
             os,
             arch: arch.map(str::to_owned),
             kind,
-            file: file(),
+            file: if manual { None } else { file() },
+            place: (kind == PackageKind::Copy).then_some(Place::Ofx),
+            args: Vec::new(),
+            instructions: manual.then(|| "Ask the admin for the licence.".to_owned()),
         }
     }
 
@@ -433,8 +508,49 @@ mod tests {
                 file: Some(PackageFile {
                     blake3: "short".to_owned(),
                     size: 1,
+                    name: "plugin.zip".to_owned(),
                 }),
                 ..build(Os::Macos, None, PackageKind::Copy)
+            }],
+            vec![PackageBuild {
+                file: Some(PackageFile {
+                    blake3: "ab".repeat(32),
+                    size: 1,
+                    name: "../../evil".to_owned(),
+                }),
+                ..build(Os::Macos, None, PackageKind::Copy)
+            }],
+            vec![PackageBuild {
+                place: None,
+                ..build(Os::Macos, None, PackageKind::Copy)
+            }],
+            vec![PackageBuild {
+                place: Some(Place::Lut),
+                ..build(Os::Macos, None, PackageKind::Font)
+            }],
+            vec![PackageBuild {
+                args: vec!["/S".to_owned()],
+                ..build(Os::Macos, None, PackageKind::Pkg)
+            }],
+            vec![PackageBuild {
+                args: vec!["a\0b".to_owned()],
+                ..build(Os::Windows, None, PackageKind::Exe)
+            }],
+            vec![PackageBuild {
+                instructions: None,
+                ..build(Os::Macos, None, PackageKind::Manual)
+            }],
+            vec![PackageBuild {
+                instructions: Some("x".repeat(MAX_INSTRUCTIONS + 1)),
+                ..build(Os::Macos, None, PackageKind::Manual)
+            }],
+            vec![PackageBuild {
+                instructions: Some("Not for an installer".to_owned()),
+                ..build(Os::Macos, None, PackageKind::Pkg)
+            }],
+            vec![PackageBuild {
+                file: file(),
+                ..build(Os::Macos, None, PackageKind::Manual)
             }],
         ];
         for builds in bad_builds {
@@ -445,12 +561,55 @@ mod tests {
 
     #[test]
     fn a_manual_package_needs_no_file() {
-        let manual = PackageBuild {
-            file: None,
-            ..build(Os::Windows, None, PackageKind::Manual)
-        };
+        let manual = build(Os::Windows, None, PackageKind::Manual);
         let manifest = manifest(vec![package("licence", vec![manual])]);
         assert!(SignedManifest::sign(&key(1), &manifest).is_ok());
+    }
+
+    #[test]
+    fn an_installer_takes_signed_arguments() {
+        let silent = PackageBuild {
+            args: vec!["/S".to_owned(), "/NORESTART".to_owned()],
+            ..build(Os::Windows, None, PackageKind::Exe)
+        };
+        let manifest = manifest(vec![package("plugin", vec![silent])]);
+        assert!(SignedManifest::sign(&key(1), &manifest).is_ok());
+    }
+
+    #[test]
+    fn too_many_packages_are_refused() {
+        let packages = (0..=MAX_PACKAGES)
+            .map(|n| {
+                package(
+                    &format!("font-{n}"),
+                    vec![build(Os::Macos, None, PackageKind::Font)],
+                )
+            })
+            .collect();
+        assert!(is_malformed(&manifest(packages)));
+    }
+
+    #[test]
+    fn file_names_stay_in_their_folder() {
+        for good in ["Inter-Regular.ttf", "Boris FX 2025.pkg", "plugin.ofx.zip"] {
+            assert!(is_file_name(good), "{good}");
+        }
+        for bad in [
+            "",
+            ".",
+            "..",
+            ".hidden",
+            "a/b",
+            r"a\b",
+            "C:evil",
+            "a?",
+            "trailing.",
+            "trailing ",
+            "new\nline",
+        ] {
+            assert!(!is_file_name(bad), "{bad}");
+        }
+        assert!(!is_file_name(&"a".repeat(MAX_FILE_NAME + 1)));
     }
 
     #[test]

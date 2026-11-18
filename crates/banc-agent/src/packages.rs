@@ -4,18 +4,28 @@
 //! so every rule has its test. Banc only ever removes what it installed
 //! itself.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
+use std::path::PathBuf;
 
 use banc_proto::machine::Os;
 use banc_proto::manifest::{Manifest, Package, PackageBuild, PackageKind};
+use banc_proto::packages::{PackageReport, PackageState, WorkstationReport};
+use serde::{Deserialize, Serialize};
 
 /// A package present on this workstation.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LocalPackage {
     pub version: String,
     /// BLAKE3 of the file Banc installed it from. `None` when the package
     /// was found on the machine, installed by someone else.
     pub installed_from: Option<String>,
+    /// How Banc installed it.
+    #[serde(default)]
+    pub kind: Option<PackageKind>,
+    /// What Banc put on the machine for it, to take away on removal. Empty
+    /// for an installer: only its vendor knows what it wrote.
+    #[serde(default)]
+    pub files: Vec<PathBuf>,
 }
 
 impl LocalPackage {
@@ -53,6 +63,15 @@ pub enum Action {
 }
 
 impl Action {
+    pub fn id(&self) -> &str {
+        match self {
+            Self::Install { id }
+            | Self::Upgrade { id, .. }
+            | Self::Remove { id }
+            | Self::Manual { id } => id,
+        }
+    }
+
     /// Whether doing it changes files that Resolve may be using.
     fn needs_resolve_closed(&self) -> bool {
         !matches!(self, Self::Manual { .. })
@@ -115,6 +134,56 @@ pub fn plan(manifest: &Manifest, machine: Machine<'_>, local: &LocalState) -> Pl
     plan
 }
 
+/// Where the workstation stands, for the admin and the window. `failures`
+/// are the errors of the last attempts, by package.
+pub fn report(
+    manifest: &Manifest,
+    machine: Machine<'_>,
+    local: &LocalState,
+    failures: &HashMap<String, String>,
+) -> WorkstationReport {
+    let planned = plan(manifest, machine, local);
+    let mut packages = Vec::new();
+    for package in &manifest.packages {
+        let id = &package.id;
+        let version = local.get(id).map(|found| found.version.clone());
+        let build = package.build_for(machine.os, machine.arch);
+        let action = planned.actions.iter().find(|action| action.id() == id);
+        let (state, error, instructions) = match (build, action) {
+            (None, _) if package.required => (PackageState::Unavailable, None, None),
+            (None, _) => continue,
+            (Some(build), Some(Action::Manual { .. })) => {
+                (PackageState::Manual, None, build.instructions.clone())
+            }
+            (Some(_), Some(_)) => match failures.get(id) {
+                Some(error) => (
+                    PackageState::Failed,
+                    Some(banc_proto::packages::short_error(error)),
+                    None,
+                ),
+                None => (PackageState::Pending, None, None),
+            },
+            (Some(_), None) if version.is_some() => (PackageState::Installed, None, None),
+            // Optional, and nobody installed it here.
+            (Some(_), None) => continue,
+        };
+        packages.push(PackageReport {
+            id: id.clone(),
+            version,
+            state,
+            error,
+            instructions,
+        });
+    }
+    WorkstationReport {
+        manifest_version: Some(manifest.version),
+        refused: None,
+        resolve_mismatch: planned.resolve_mismatch,
+        resolve_required: manifest.resolve.as_ref().map(|r| r.version.clone()),
+        packages,
+    }
+}
+
 fn action_for(package: &Package, build: &PackageBuild, local: &LocalState) -> Option<Action> {
     let id = package.id.clone();
     let present = local.get(&package.id);
@@ -164,7 +233,11 @@ mod tests {
                 file: Some(PackageFile {
                     blake3: HASH.to_owned(),
                     size: 1,
+                    name: "file".to_owned(),
                 }),
+                place: None,
+                args: Vec::new(),
+                instructions: None,
             }],
         }
     }
@@ -181,6 +254,8 @@ mod tests {
         LocalPackage {
             version: version.to_owned(),
             installed_from: Some(hash.to_owned()),
+            kind: Some(PackageKind::Font),
+            files: Vec::new(),
         }
     }
 
@@ -188,6 +263,8 @@ mod tests {
         LocalPackage {
             version: version.to_owned(),
             installed_from: None,
+            kind: None,
+            files: Vec::new(),
         }
     }
 
@@ -357,6 +434,75 @@ mod tests {
                 id: "licence".to_owned()
             }]
         );
+    }
+
+    fn states(wanted: &Manifest, state: &LocalState) -> Vec<(String, PackageState)> {
+        report(wanted, MAC, state, &HashMap::new())
+            .packages
+            .into_iter()
+            .map(|package| (package.id, package.state))
+            .collect()
+    }
+
+    #[test]
+    fn the_report_says_what_is_installed_and_what_is_coming() {
+        let wanted = manifest(vec![
+            package("done", PackageKind::Font),
+            package("coming", PackageKind::Font),
+        ]);
+        let state = local(&[("done", by_banc("2.0", HASH))]);
+        assert_eq!(
+            states(&wanted, &state),
+            [
+                ("done".to_owned(), PackageState::Installed),
+                ("coming".to_owned(), PackageState::Pending),
+            ]
+        );
+    }
+
+    #[test]
+    fn the_report_carries_failures_and_instructions() {
+        let mut manual = package("licence", PackageKind::Manual);
+        manual.builds[0].file = None;
+        manual.builds[0].instructions = Some("Call the admin".to_owned());
+        let wanted = manifest(vec![package("font", PackageKind::Font), manual]);
+        let failures = HashMap::from([("font".to_owned(), "x".repeat(500))]);
+        let result = report(&wanted, MAC, &LocalState::new(), &failures);
+        assert_eq!(result.manifest_version, Some(1));
+        assert_eq!(result.packages[0].state, PackageState::Failed);
+        assert!(result.packages[0].error.as_ref().unwrap().len() <= 160);
+        assert_eq!(result.packages[1].state, PackageState::Manual);
+        assert_eq!(
+            result.packages[1].instructions.as_deref(),
+            Some("Call the admin")
+        );
+    }
+
+    #[test]
+    fn the_report_leaves_out_what_does_not_concern_this_machine() {
+        let mut optional = package("extra", PackageKind::Font);
+        optional.required = false;
+        let wanted = manifest(vec![optional, package("mac-only", PackageKind::Font)]);
+        let windows = Machine {
+            os: Os::Windows,
+            arch: "x86_64",
+            resolve: None,
+        };
+        let result = report(&wanted, windows, &LocalState::new(), &HashMap::new());
+        assert_eq!(result.packages.len(), 1);
+        assert_eq!(result.packages[0].id, "mac-only");
+        assert_eq!(result.packages[0].state, PackageState::Unavailable);
+    }
+
+    #[test]
+    fn the_report_blocks_projects_on_the_wrong_resolve() {
+        let mut wanted = manifest(vec![]);
+        wanted.resolve = Some(RequiredResolve {
+            version: "21.0".to_owned(),
+        });
+        let result = report(&wanted, MAC, &LocalState::new(), &HashMap::new());
+        assert!(!result.can_open_projects());
+        assert_eq!(result.resolve_required.as_deref(), Some("21.0"));
     }
 
     #[test]

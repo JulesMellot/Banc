@@ -103,6 +103,9 @@ fn run(options: args::Options) -> anyhow::Result<()> {
         secrets,
         socket: options.socket.unwrap_or_else(paths::agent_socket),
         inventory: banc_agent::system_inventory(),
+        places: banc_agent::system_places()?,
+        resolve_open: std::sync::Arc::new(banc_platform::machine::resolve_running),
+        package_retry: banc_agent::PACKAGE_RETRY,
     };
 
     // A single thread for the whole agent: this is what keeps the memory target.

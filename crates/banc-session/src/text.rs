@@ -67,6 +67,7 @@ mod tests {
             version: "0".to_owned(),
             enrollment: None,
             inventory: Inventory::default(),
+            packages: None,
         };
         assert_eq!(
             text.status_line(Some(&status)),

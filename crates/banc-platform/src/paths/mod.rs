@@ -53,6 +53,21 @@ pub fn agent_socket() -> PathBuf {
     PathBuf::from(os::AGENT_SOCKET)
 }
 
+/// The folders of DaVinci Resolve that packages are copied to, for every
+/// user of the workstation (section 11 of the plan).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolveDirs {
+    pub ofx: PathBuf,
+    pub lut: PathBuf,
+    pub fusion_templates: PathBuf,
+    pub scripts: PathBuf,
+}
+
+/// Resolve's folders on this machine.
+pub fn resolve_dirs() -> Result<ResolveDirs, PathError> {
+    os::resolve_dirs(&|name| std::env::var_os(name))
+}
+
 /// Required environment variable, refused if empty.
 fn required(env: Env<'_>, name: &'static str) -> Result<PathBuf, PathError> {
     match env(name) {
