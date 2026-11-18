@@ -2,12 +2,19 @@
   import type { AgentStatus, Commands } from '../lib/agent';
   import { errorMessage } from '../lib/format';
   import { t } from '../lib/i18n';
+  import Updates from './Updates.svelte';
 
   let {
     banc,
     status,
+    appVersion,
     onChanged,
-  }: { banc: Commands; status: AgentStatus; onChanged: (next: AgentStatus) => void } = $props();
+  }: {
+    banc: Commands;
+    status: AgentStatus;
+    appVersion: string;
+    onChanged: (next: AgentStatus) => void;
+  } = $props();
 
   const enrollment = $derived(status.enrollment);
   const packages = $derived(status.packages ?? null);
@@ -47,7 +54,10 @@
       <dd>{status.inventory.os_version}</dd>
       <dt>{t('workstation.admin_key')}</dt>
       <dd><code>{enrollment.admin_fingerprint}</code></dd>
+      <dt>{t('workstation.version')}</dt>
+      <dd>{status.version}</dd>
     </dl>
+    <Updates {banc} {status} {appVersion} {onChanged} />
   </section>
 
   {#if packages}

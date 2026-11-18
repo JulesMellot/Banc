@@ -20,7 +20,7 @@ use std::future::Future;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use anyhow::Context;
 use banc_platform::local::LocalListener;
@@ -46,6 +46,22 @@ pub type ResolveOpen = Arc<dyn Fn() -> bool + Send + Sync>;
 /// How long unfinished packages wait before the next look: a package held
 /// back by an open Resolve goes in soon after Resolve closes.
 pub const PACKAGE_RETRY: Duration = Duration::from_secs(300);
+
+/// How long a replaced program must stay untouched before the agent restarts
+/// on it: an installer may still be writing it.
+const REPLACED_SETTLE: Duration = Duration::from_secs(10);
+
+/// Whether the program on disk is another one than the one running.
+fn is_replaced(started: SystemTime, on_disk: SystemTime, now: SystemTime) -> bool {
+    started != on_disk
+        && now
+            .duration_since(on_disk)
+            .is_ok_and(|age| age >= REPLACED_SETTLE)
+}
+
+fn modified(path: &std::path::Path) -> Option<SystemTime> {
+    std::fs::metadata(path).ok()?.modified().ok()
+}
 
 /// The folders of this machine that packages are installed to.
 pub fn system_places() -> Result<Places, banc_platform::paths::PathError> {
@@ -80,6 +96,11 @@ pub struct Config {
     pub resolve_open: ResolveOpen,
     /// See [`PACKAGE_RETRY`].
     pub package_retry: Duration,
+    /// The automatic update, for a service that updates itself.
+    pub update: Option<Arc<update::Monitor>>,
+    /// The running program, for a service that the system restarts: an
+    /// installation by hand replaces the files but not the running agent.
+    pub program: Option<PathBuf>,
 }
 
 /// State shared by the local endpoint and the connection to the server.
@@ -98,6 +119,10 @@ pub struct Shared {
     /// Manual packages a person just confirmed.
     confirmed: Mutex<Vec<String>>,
     report: watch::Sender<Option<WorkstationReport>>,
+    update: Option<Arc<update::Monitor>>,
+    /// The program, and when it was written when this agent started.
+    program: Option<(PathBuf, SystemTime)>,
+    replaced: Notify,
 }
 
 /// Held during an enrollment.
@@ -130,7 +155,33 @@ impl Shared {
             package_wake: Notify::new(),
             confirmed: Mutex::new(Vec::new()),
             report: watch::Sender::new(None),
+            update: config.update.clone(),
+            program: config
+                .program
+                .as_ref()
+                .and_then(|path| Some((path.clone(), modified(path)?))),
+            replaced: Notify::new(),
         }
+    }
+
+    /// Ends the agent if its program was replaced. The system service
+    /// manager starts the new one.
+    pub fn restart_if_replaced(&self) {
+        let Some((path, started)) = &self.program else {
+            return;
+        };
+        if modified(path).is_some_and(|now| is_replaced(*started, now, SystemTime::now())) {
+            self.replaced.notify_one();
+        }
+    }
+
+    /// Looks for a new version now. `false` if this build does not update
+    /// itself.
+    pub fn check_update(&self) -> bool {
+        self.update.as_ref().is_some_and(|monitor| {
+            monitor.check_now();
+            true
+        })
     }
 
     pub fn inventory(&self) -> Inventory {
@@ -169,6 +220,7 @@ impl Shared {
             }),
             inventory: self.inventory(),
             packages: self.report.borrow().clone().map(Box::new),
+            update: self.update.as_ref().map(|monitor| monitor.status()),
         }
     }
 
@@ -226,6 +278,20 @@ pub async fn run(config: Config, shutdown: impl Future<Output = ()>) -> anyhow::
         tracing::info!("not enrolled yet, waiting for an invitation");
     }
     let shared = Arc::new(Shared::new(&config, enrolled));
+    tokio::select! {
+        result = serve(&config, shared.clone(), shutdown) => result,
+        () = shared.replaced.notified() => {
+            // An error: every service manager restarts a program that failed.
+            anyhow::bail!("the program was replaced, restarting on the new version")
+        }
+    }
+}
+
+async fn serve(
+    config: &Config,
+    shared: Arc<Shared>,
+    shutdown: impl Future<Output = ()>,
+) -> anyhow::Result<()> {
     let listener = LocalListener::bind(&config.socket)
         .with_context(|| format!("listening on {}", config.socket.display()))?;
     let local = tokio::spawn(local::serve(listener, shared.clone()));
@@ -316,4 +382,26 @@ async fn bind(key: SecretKey, enrolled: &Enrolled) -> anyhow::Result<Endpoint> {
         .bind()
         .await
         .context("starting the iroh endpoint")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_replaced_program_is_noticed_once_it_is_settled() {
+        let started = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000);
+        let written = started + Duration::from_secs(500);
+        assert!(!is_replaced(started, started, written), "the same program");
+        assert!(
+            !is_replaced(started, written, written),
+            "still being written"
+        );
+        assert!(is_replaced(started, written, written + REPLACED_SETTLE));
+        let older = started - Duration::from_secs(500);
+        assert!(
+            is_replaced(started, older, started),
+            "a downgrade by hand counts too"
+        );
+    }
 }

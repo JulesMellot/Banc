@@ -10,7 +10,8 @@ use axum::http::{header, Method, Request, StatusCode};
 use banc_proto::keys::{AdminKeyRegistration, SecretKey};
 use banc_proto::machine::Os;
 use banc_proto::manifest::{
-    Manifest, Package, PackageBuild, PackageFile, PackageKind, Place, SignedManifest,
+    DraftRequest, Manifest, Package, PackageBuild, PackageFile, PackageKind, Place, SignedManifest,
+    DRAFT_PATH, PUBLISH_PATH,
 };
 use banc_server::config::Config;
 use banc_server::server::{self, Running};
@@ -309,6 +310,57 @@ async fn versions_follow_each_other_and_files_must_be_stored() {
     let (status, body) = harness.publish(&unknown).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert_eq!(body["error"], "package_file_missing");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_application_needs_only_the_admin_key() {
+    let harness = Harness::start().await;
+    let file = harness.stored_file().await;
+    let draft = json!({ "packages": [lut(file.clone())] });
+    let (status, _) = harness
+        .json(Method::PUT, "/api/v1/admin/manifest/draft", Some(draft))
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    let no_session = |path: &str, body: Value| {
+        let request = Request::builder()
+            .method(Method::POST)
+            .uri(path)
+            .header(header::CONTENT_TYPE, "application/json");
+        (request, Body::from(body.to_string()))
+    };
+    let now = harness.server.state.now();
+
+    let forged = DraftRequest::signed(&SecretKey::from_bytes(&[9; 32]), now);
+    let (request, body) = no_session(DRAFT_PATH, serde_json::to_value(&forged).unwrap());
+    let (status, _, answer) = send(&harness.server, request, body).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(answer["error"], "admin_key_not_registered");
+
+    let old = DraftRequest::signed(&harness.admin_key, now - 3600);
+    let (request, body) = no_session(DRAFT_PATH, serde_json::to_value(&old).unwrap());
+    let (status, _, _) = send(&harness.server, request, body).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "an old request is refused");
+
+    let asked = DraftRequest::signed(&harness.admin_key, now);
+    let (request, body) = no_session(DRAFT_PATH, serde_json::to_value(&asked).unwrap());
+    let (status, _, view) = send(&harness.server, request, body).await;
+    assert_eq!(status, StatusCode::OK, "{view}");
+    assert_eq!(view["changed"], true);
+    assert_eq!(view["draft"]["packages"][0]["id"], "team-lut");
+
+    let wanted = manifest(1, vec![lut(file)]);
+    let forged = SignedManifest::sign(&SecretKey::from_bytes(&[9; 32]), &wanted).unwrap();
+    let (request, body) = no_session(PUBLISH_PATH, serde_json::to_value(&forged).unwrap());
+    let (status, _, answer) = send(&harness.server, request, body).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(answer["error"], "bad_signature");
+
+    let signed = SignedManifest::sign(&harness.admin_key, &wanted).unwrap();
+    let (request, body) = no_session(PUBLISH_PATH, serde_json::to_value(&signed).unwrap());
+    let (status, _, _) = send(&harness.server, request, body).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    assert_eq!(*harness.server.state.manifest_version.borrow(), 1);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

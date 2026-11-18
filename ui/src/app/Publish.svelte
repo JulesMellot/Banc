@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
 
   import type { Commands } from '../lib/agent';
   import type { Manifest } from '../lib/api';
@@ -7,110 +7,119 @@
   import { t } from '../lib/i18n';
   import { fileSize } from '../lib/manifest';
 
-  let { banc, server: initialServer }: { banc: Commands; server: string } = $props();
+  /** How often an open window looks for a draft saved in the web admin. */
+  const LOOK_EVERY_MS = 15000;
 
-  // The enrolled server, once, as a starting value the admin can change.
-  let server = $state('');
-  let name = $state('');
-  let password = $state('');
+  let { banc, server, wake }: { banc: Commands; server: string; wake: number } = $props();
+
   let manifest = $state<Manifest | null>(null);
   let published = $state<number | null>(null);
+  let postponed = $state(false);
   let error = $state('');
   let busy = $state(false);
+  // One look at a time: what is signed must be the manifest on screen.
+  let looking = false;
+
+  /** Background looks stay silent: a server out of reach is shown elsewhere. */
+  async function look(reportErrors: boolean) {
+    if (looking || busy || manifest) {
+      return;
+    }
+    looking = true;
+    try {
+      const proposal = await banc.manifestPrepare(server);
+      manifest = proposal.changed && !postponed ? proposal.manifest : null;
+      error = '';
+    } catch (e) {
+      if (reportErrors) {
+        error = errorMessage(e);
+      }
+    }
+    looking = false;
+  }
 
   onMount(() => {
-    server = initialServer;
+    const timer = setInterval(() => void look(false), LOOK_EVERY_MS);
+    return () => clearInterval(timer);
   });
 
-  async function act(action: () => Promise<void>) {
+  // At the start, and each time the web admin asks for a signature.
+  $effect(() => {
+    if (wake >= 0) {
+      untrack(() => {
+        postponed = false;
+        void look(true);
+      });
+    }
+  });
+
+  async function sign() {
     busy = true;
     error = '';
     try {
-      await action();
+      published = await banc.manifestPublish();
     } catch (e) {
       error = errorMessage(e);
     }
+    // After a refusal, the next look brings the current draft back to read.
+    manifest = null;
     busy = false;
   }
 
-  const read = (event: SubmitEvent) => {
-    event.preventDefault();
-    return act(async () => {
-      published = null;
-      manifest = await banc.manifestPrepare(server, name, password);
-      password = '';
-    });
-  };
-
-  const sign = () =>
-    act(async () => {
-      published = await banc.manifestPublish();
-      manifest = null;
-    });
-
-  const cancel = () =>
-    act(async () => {
-      await banc.manifestCancel();
-      manifest = null;
-    });
+  async function later() {
+    postponed = true;
+    manifest = null;
+    await banc.manifestCancel().catch(() => undefined);
+  }
 </script>
 
-<h3>{t('publish.title')}</h3>
 {#if error}<p role="alert">{error}</p>{/if}
-{#if published !== null}<p>{t('publish.done', { version: published })}</p>{/if}
+{#if published !== null}<p class="done">{t('publish.done', { version: published })}</p>{/if}
 
 {#if manifest}
-  <h4>{t('publish.review', { version: manifest.version })}</h4>
-  <p>
-    {manifest.resolve
-      ? t('publish.resolve', { version: manifest.resolve.version })
-      : t('publish.resolve_none')}
-  </p>
-  {#if manifest.packages.length === 0}<p role="alert">{t('publish.no_packages')}</p>{/if}
-  <ul>
-    {#each manifest.packages as item (item.id)}
-      <li>
-        <strong>{item.id}</strong>
-        {item.version}
-        {#if item.required}<small>{t('packages.required')}</small>{/if}
-        <ul>
-          {#each item.builds as build, index (index)}
-            <li>
-              {t(`os.${build.os}`)}
-              {build.arch ?? t('packages.arch_any')}, {t(`package_kind.${build.kind}`)}
-              {#if build.place}→ {t(`place.${build.place}`)}{/if}
-              {#if build.file}
-                <br />{build.file.name} ({fileSize(build.file.size)})
-                <br /><small>{t('publish.hash')} <code>{build.file.blake3}</code></small>
-              {/if}
-              {#if build.args.length > 0}<br /><code>{build.args.join(' ')}</code>{/if}
-              {#if build.instructions}<br />{build.instructions}{/if}
-            </li>
-          {/each}
-        </ul>
-      </li>
-    {/each}
-  </ul>
-  <button onclick={sign} disabled={busy}>{t('publish.sign')}</button>
-  <button onclick={cancel} disabled={busy}>{t('publish.cancel')}</button>
-{:else}
-  <p>{t('publish.intro')}</p>
-  <form onsubmit={read}>
-    <label>
-      {t('invites.server')}
-      <input bind:value={server} required placeholder="https://banc.example.com" />
-    </label>
-    <label>{t('login.name')} <input bind:value={name} required autocomplete="username" /></label>
-    <label>
-      {t('login.password')}
-      <input type="password" bind:value={password} required autocomplete="current-password" />
-    </label>
-    <button type="submit" disabled={busy}>{t('publish.read')}</button>
-  </form>
+  <section>
+    <h2>{t('publish.waiting')}</h2>
+    <h3>{t('publish.review', { version: manifest.version })}</h3>
+    <p>
+      {manifest.resolve
+        ? t('publish.resolve', { version: manifest.resolve.version })
+        : t('publish.resolve_none')}
+    </p>
+    {#if manifest.packages.length === 0}<p role="alert">{t('publish.no_packages')}</p>{/if}
+    <ul>
+      {#each manifest.packages as item (item.id)}
+        <li>
+          <strong>{item.id}</strong>
+          {item.version}
+          {#if item.required}<small>{t('packages.required')}</small>{/if}
+          <ul>
+            {#each item.builds as build, index (index)}
+              <li>
+                {t(`os.${build.os}`)}
+                {build.arch ?? t('packages.arch_any')}, {t(`package_kind.${build.kind}`)}
+                {#if build.place}→ {t(`place.${build.place}`)}{/if}
+                {#if build.file}
+                  <br />{build.file.name} ({fileSize(build.file.size)})
+                  <br /><small>{t('publish.hash')} <code>{build.file.blake3}</code></small>
+                {/if}
+                {#if build.args.length > 0}<br /><code>{build.args.join(' ')}</code>{/if}
+                {#if build.instructions}<br />{build.instructions}{/if}
+              </li>
+            {/each}
+          </ul>
+        </li>
+      {/each}
+    </ul>
+    <button onclick={sign} disabled={busy}>{t('publish.sign')}</button>
+    <button onclick={later} disabled={busy}>{t('publish.later')}</button>
+  </section>
 {/if}
 
 <style>
   code {
     word-break: break-all;
+  }
+  .done {
+    color: #1b7a3a;
   }
 </style>

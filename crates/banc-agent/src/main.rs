@@ -98,7 +98,11 @@ fn run(options: args::Options) -> anyhow::Result<()> {
             SecretStore::os(Scope::System)?,
         ),
     };
-    let config = banc_agent::Config {
+    let monitor = options
+        .service
+        .then(|| std::sync::Arc::new(update::Monitor::default()));
+    let program = options.service.then(std::env::current_exe).transpose()?;
+    let mut config = banc_agent::Config {
         state_dir,
         secrets,
         socket: options.socket.unwrap_or_else(paths::agent_socket),
@@ -106,6 +110,8 @@ fn run(options: args::Options) -> anyhow::Result<()> {
         places: banc_agent::system_places()?,
         resolve_open: std::sync::Arc::new(banc_platform::machine::resolve_running),
         package_retry: banc_agent::PACKAGE_RETRY,
+        update: None,
+        program,
     };
 
     // A single thread for the whole agent: this is what keeps the memory target.
@@ -121,9 +127,12 @@ fn run(options: args::Options) -> anyhow::Result<()> {
     } else {
         None
     };
+    if updates.is_some() {
+        config.update.clone_from(&monitor);
+    }
     runtime.block_on(async {
-        if let Some(settings) = updates {
-            tokio::spawn(update::watch(settings));
+        if let (Some(settings), Some(monitor)) = (updates, monitor) {
+            tokio::spawn(update::watch(settings, monitor));
         }
         banc_agent::run(config, async {
             if let Err(error) = banc_platform::signal::shutdown().await {

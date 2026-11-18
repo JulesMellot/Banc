@@ -168,25 +168,29 @@ pub async fn admin_key_register(
     Ok(info(&key))
 }
 
-/// Reads what the server proposes to publish, for the admin to check.
+/// What the server proposes to publish, for the admin to read.
+#[derive(Debug, Serialize)]
+pub struct Proposal {
+    pub manifest: Manifest,
+    /// Whether it differs from what is published.
+    pub changed: bool,
+}
+
+/// Reads what the server proposes to publish. The admin key proves who is
+/// asking: no password to type.
 #[tauri::command]
 pub async fn manifest_prepare(
     pending: tauri::State<'_, PendingManifest>,
     server: String,
-    name: String,
-    password: String,
-) -> CommandResult<Manifest> {
+) -> CommandResult<Proposal> {
     let key = load(&store()?)?
         .ok_or_else(|| CommandError::new("no_admin_key", "create or restore the key first"))?;
     let server = banc_proto::invite::normalize_server(&server)
         .map_err(|e| CommandError::new("bad_server", e))?;
-    let session =
-        crate::server::prepare_publication(&server, &name, &password, &key.public()).await?;
+    let (session, changed) = crate::server::prepare_publication(&server, &key).await?;
     let manifest = session.manifest.clone();
-    if let Some(previous) = pending.replace(Some(session)) {
-        crate::server::cancel(&previous).await;
-    }
-    Ok(manifest)
+    pending.replace(changed.then_some(session));
+    Ok(Proposal { manifest, changed })
 }
 
 /// Signs the manifest the admin has just read, and publishes it.
@@ -206,11 +210,8 @@ pub async fn manifest_publish(pending: tauri::State<'_, PendingManifest>) -> Com
 
 /// The admin decided not to publish.
 #[tauri::command]
-pub async fn manifest_cancel(pending: tauri::State<'_, PendingManifest>) -> CommandResult<()> {
-    if let Some(session) = pending.replace(None) {
-        crate::server::cancel(&session).await;
-    }
-    Ok(())
+pub fn manifest_cancel(pending: tauri::State<'_, PendingManifest>) {
+    pending.replace(None);
 }
 
 /// What the server answers about its registered key.

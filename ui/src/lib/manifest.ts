@@ -6,6 +6,7 @@ import type {
   Os,
   Package,
   PackageBuild,
+  PackageFile,
   PackageKind,
   PackageState,
   Place,
@@ -44,6 +45,70 @@ export function blankBuild(os: Os = 'macos'): PackageBuild {
 
 export function blankPackage(): Package {
   return { id: '', version: '1.0', required: true, builds: [blankBuild()] };
+}
+
+const PLACE_OF_EXTENSION: Record<string, Place> = {
+  cube: 'lut',
+  '3dl': 'lut',
+  dat: 'lut',
+  ilut: 'lut',
+  olut: 'lut',
+  setting: 'fusion_templates',
+  drfx: 'fusion_templates',
+  py: 'scripts',
+  lua: 'scripts',
+};
+const FONT_EXTENSIONS = ['ttf', 'otf', 'ttc'];
+const INSTALLERS: Record<string, { os: Os; kind: PackageKind }> = {
+  pkg: { os: 'macos', kind: 'pkg' },
+  msi: { os: 'windows', kind: 'msi' },
+  exe: { os: 'windows', kind: 'exe' },
+  deb: { os: 'linux', kind: 'deb' },
+  rpm: { os: 'linux', kind: 'rpm' },
+  run: { os: 'linux', kind: 'run' },
+};
+
+/** An identifier for a file name, different from those already taken. */
+export function packageId(name: string, taken: string[]): string {
+  const base =
+    name
+      .replace(/\.[^.]*$/, '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 56)
+      .replace(/-+$/, '') || 'paquet';
+  let id = base;
+  for (let number = 2; taken.includes(id); number += 1) {
+    id = `${base}-${number}`;
+  }
+  return id;
+}
+
+/** A package ready to publish from an uploaded file: what the file is decides
+ * where it goes. An archive of LUTs says so in its name, others are plugins. */
+export function packageFromFile(stored: PackageFile, taken: string[]): Package {
+  const extension = stored.name.split('.').pop()?.toLowerCase() ?? '';
+  const file = { blake3: stored.blake3, size: stored.size, name: stored.name };
+  const installer = INSTALLERS[extension];
+  const builds = installer
+    ? [{ ...blankBuild(installer.os), kind: installer.kind }]
+    : SYSTEMS.map((os) => {
+        if (FONT_EXTENSIONS.includes(extension)) {
+          return { ...blankBuild(os), kind: 'font' as const };
+        }
+        const archiveOfLuts = extension === 'zip' && /lut/i.test(stored.name);
+        const place = archiveOfLuts ? 'lut' : (PLACE_OF_EXTENSION[extension] ?? 'ofx');
+        return { ...blankBuild(os), place };
+      });
+  return {
+    id: packageId(stored.name, taken),
+    version: '1.0',
+    required: true,
+    builds: builds.map((build) => tidyBuild({ ...build, file })),
+  };
 }
 
 /** Drops what the build's system and kind do not use. */

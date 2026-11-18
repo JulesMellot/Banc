@@ -70,6 +70,18 @@ pub async fn confirm_manual(id: String) -> CommandResult<AgentStatus> {
     status_of(ask(&Request::ConfirmManual { id }).await?)
 }
 
+/// Looks for a new version now.
+#[tauri::command]
+pub async fn check_update() -> CommandResult<AgentStatus> {
+    status_of(ask(&Request::CheckUpdate).await?)
+}
+
+/// The version of the installed application.
+#[tauri::command]
+pub fn app_version(app: tauri::AppHandle) -> String {
+    app.package_info().version.to_string()
+}
+
 /// Installs and starts the agent service, after the OS has asked for the
 /// administrator password. The agent binary sits next to the application's.
 #[tauri::command]

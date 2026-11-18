@@ -8,6 +8,7 @@
   import AdminKey from './AdminKey.svelte';
   import Install from './Install.svelte';
   import Join from './Join.svelte';
+  import Publish from './Publish.svelte';
   import Workstation from './Workstation.svelte';
 
   const banc = commands();
@@ -17,6 +18,9 @@
   let link = $state<string | null>(null);
   let error = $state('');
   let showAdmin = $state(false);
+  let appVersion = $state('');
+  let holdsAdminKey = $state(false);
+  let publishWake = $state(0);
 
   async function refresh() {
     error = '';
@@ -32,14 +36,31 @@
     }
   }
 
+  async function lookForAdminKey() {
+    holdsAdminKey = (await banc.adminKeyStatus().catch(() => null)) !== null;
+  }
+
+  function toggleAdmin() {
+    showAdmin = !showAdmin;
+    // The key may have just been created or restored.
+    void lookForAdminKey();
+  }
+
   onMount(() => {
     let stop: (() => void) | undefined;
+    let stopPublish: (() => void) | undefined;
     void (async () => {
       link = await banc.pendingLink().catch(() => null);
+      appVersion = await banc.appVersion().catch(() => '');
       stop = await listen<string>('banc-link', (event) => {
         link = event.payload;
         showAdmin = false;
       });
+      stopPublish = await listen('banc-publish', () => {
+        showAdmin = false;
+        publishWake += 1;
+      });
+      await lookForAdminKey();
       await refresh();
     })();
     // The state shown follows the agent while the window is open.
@@ -47,6 +68,7 @@
     return () => {
       clearInterval(timer);
       stop?.();
+      stopPublish?.();
     };
   });
 </script>
@@ -62,7 +84,10 @@
   {:else if status && !status.enrollment}
     <Join {banc} {link} onJoined={(next) => ((status = next), (link = null))} />
   {:else if status?.enrollment}
-    <Workstation {banc} {status} onChanged={(next) => (status = next)} />
+    {#if holdsAdminKey && status.enrollment.connection !== 'revoked'}
+      <Publish {banc} server={status.enrollment.server} wake={publishWake} />
+    {/if}
+    <Workstation {banc} {status} {appVersion} onChanged={(next) => (status = next)} />
     {#if status.enrollment.connection === 'revoked'}
       <Join {banc} {link} onJoined={(next) => ((status = next), (link = null))} />
     {/if}
@@ -71,7 +96,7 @@
   {/if}
 
   <footer>
-    <button class="link" onclick={() => (showAdmin = !showAdmin)}>
+    <button class="link" onclick={toggleAdmin}>
       {showAdmin ? t('window.back') : t('adminkey.title')}
     </button>
   </footer>

@@ -36,6 +36,8 @@ async fn handle(mut stream: ServerStream, shared: &Arc<Shared>) -> anyhow::Resul
     };
     let response = answer(request, shared).await;
     control::write_frame(&mut stream, &response).await?;
+    // The tray icon asks every minute: no timer of its own for this.
+    shared.restart_if_replaced();
     Ok(())
 }
 
@@ -53,6 +55,13 @@ pub async fn answer(request: Request, shared: &Arc<Shared>) -> Response {
         Request::ConfirmManual { id } => {
             shared.confirm_manual(id);
             Response::Status(shared.status())
+        }
+        Request::CheckUpdate => {
+            if shared.check_update() {
+                Response::Status(shared.status())
+            } else {
+                error("updates_unavailable", "this build does not update itself")
+            }
         }
     }
 }

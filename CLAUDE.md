@@ -138,6 +138,9 @@ Phase 2 decisions:
 - **Removing an installer's package**: `pkg`, `msi`, `exe`, `deb`, `rpm` and `run` are left installed when the manifest drops them, because only the vendor knows what they wrote. Banc logs it and forgets the package.
 - **Fusion templates and scripts go in the all-users folders**, since the service has no user session. These paths, like the rest of section 11 of the plan, still have to be confirmed on real machines.
 - **Package detection rules are not done** (`file_exists`, `bundle_version`, `registry`, `ofx_bundle`, `font`, `command`): Banc knows what it installed itself and what a person confirmed for a manual package.
+- **Signing without a password**: the window reads the draft with a request signed by the admin key (`DraftRequest`, domain `banc/manifest-draft/1`, 5 minutes of clock tolerance) and publishes with the manifest's own signature. The web admin's "Enregistrer et publier" opens `banc://publish`, which carries nothing: the window fetches the draft, shows it, and only a click signs it.
+- **Update status** (`banc_agent::update::Monitor`): the window shows what the update is doing and why it failed, and `Request::CheckUpdate` looks for a version at once and gives a failed version another chance. A hand-over that never takes over is reported instead of waiting forever.
+- **An agent replaced by hand restarts itself**: dragging a new `Banc.app` replaces the files, not the running service. The agent compares its program's date at each local status request (the tray icon asks every minute) and exits, and the service manager starts the new one. For agents too old to do this, the window offers to restart the service.
 - **Opening projects**: `WorkstationReport::can_open_projects` is the gate, shown in the window and the admin. Phase 4 calls it when projects exist. Banc does not download the Resolve installer yet.
 
 ## Commits and CI

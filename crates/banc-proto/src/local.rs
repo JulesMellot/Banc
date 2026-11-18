@@ -6,7 +6,9 @@
 //!
 //! Nothing here runs a command on the workstation: the requests are the
 //! enrollment, which only works on a machine without a team, reading the
-//! status, and a person saying a manual package is done.
+//! status, a person saying a manual package is done, and asking the agent to
+//! look for a new version, which it only installs if the release key signed
+//! it.
 
 use serde::{Deserialize, Serialize};
 
@@ -29,6 +31,8 @@ pub enum Request {
     ConfirmManual {
         id: String,
     },
+    /// Look for a new version now, and try again a version that failed here.
+    CheckUpdate,
 }
 
 /// What the user gave: a clicked link, or the server address and the key.
@@ -55,6 +59,34 @@ pub struct AgentStatus {
     /// Where the workstation stands against the team's manifest.
     #[serde(default)]
     pub packages: Option<Box<WorkstationReport>>,
+    /// Where the automatic update stands. `None`: this build does not update
+    /// itself.
+    #[serde(default)]
+    pub update: Option<UpdateStatus>,
+}
+
+/// What the automatic update is doing.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UpdatePhase {
+    /// No check has finished since the agent started.
+    #[default]
+    Pending,
+    Checking,
+    UpToDate,
+    Downloading,
+    WaitingForResolve,
+    Installing,
+    Failed,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UpdateStatus {
+    pub phase: UpdatePhase,
+    /// The version being installed, or the one that failed.
+    pub version: Option<String>,
+    /// Why the last attempt failed.
+    pub error: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -94,6 +126,15 @@ mod tests {
         assert_eq!(json["type"], "enroll");
         assert_eq!(json["invite"]["kind"], "key");
         assert_eq!(serde_json::from_value::<Request>(json).unwrap(), request);
+
+        assert_eq!(
+            serde_json::to_value(Request::CheckUpdate).unwrap()["type"],
+            "check_update"
+        );
+        assert_eq!(
+            serde_json::to_value(UpdatePhase::WaitingForResolve).unwrap(),
+            "waiting_for_resolve"
+        );
 
         let error = Response::Error {
             code: "already_enrolled".to_owned(),

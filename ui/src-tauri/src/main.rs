@@ -37,6 +37,8 @@ fn main() {
             agent::agent_status,
             agent::enroll,
             agent::confirm_manual,
+            agent::check_update,
+            agent::app_version,
             agent::install_agent,
             agent::hostname,
             agent::read_link,

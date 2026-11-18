@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { CommandError, commands, inWindow } from './agent';
+import { CommandError, commands, inWindow, isOlder } from './agent';
 
 describe('commands', () => {
   it('passes the arguments with the names the Rust side expects', async () => {
@@ -43,5 +43,14 @@ describe('inWindow', () => {
   it('detects the Tauri window', () => {
     expect(inWindow({ __TAURI_INTERNALS__: {} })).toBe(true);
     expect(inWindow({})).toBe(false);
+  });
+});
+
+describe('versions', () => {
+  it('compares number by number', () => {
+    expect(isOlder('0.1.0', '0.4.0')).toBe(true);
+    expect(isOlder('0.9.0', '0.10.0')).toBe(true);
+    expect(isOlder('0.4.0', '0.4.0')).toBe(false);
+    expect(isOlder('1.0.0', '0.9.9')).toBe(false);
   });
 });

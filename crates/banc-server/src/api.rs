@@ -20,7 +20,7 @@ use banc_proto::enroll::{self, EnrollRequest, EnrollResponse, ServerInfo};
 use banc_proto::invite::{Invite, InviteToken};
 use banc_proto::keys::{AdminKeyRegistration, Fingerprint, PublicKey};
 use banc_proto::machine::{MachineRole, PersonRole};
-use banc_proto::manifest::{self, Manifest, SignedManifest};
+use banc_proto::manifest::{self, DraftRequest, Manifest, SignedManifest};
 use serde::{Deserialize, Serialize};
 
 use crate::state::AppState;
@@ -67,6 +67,8 @@ pub fn router(state: Arc<AppState>) -> Router {
             get(get_manifest).post(publish_manifest),
         )
         .route("/api/v1/admin/manifest/draft", put(put_manifest_draft))
+        .route(manifest::DRAFT_PATH, post(read_draft_with_key))
+        .route(manifest::PUBLISH_PATH, post(publish_with_key))
         .route(relay_proxy::RELAY_PATH, any(relay))
         .route(relay_proxy::PROBE_PATH, any(relay))
         .route(relay_proxy::CAPTIVE_PORTAL_PATH, any(relay));
@@ -773,19 +775,50 @@ async fn get_manifest(
     State(state): State<Arc<AppState>>,
     _admin: AdminSession,
 ) -> AppResult<Json<ManifestView>> {
-    let published = latest_manifest(&state)?;
+    manifest_view(&state).map(Json)
+}
+
+/// The same view for the application that holds the admin key: the signature
+/// replaces the admin session.
+async fn read_draft_with_key(
+    State(state): State<Arc<AppState>>,
+    Body(request): Body<DraftRequest>,
+) -> AppResult<Json<ManifestView>> {
+    let key = registered_admin_key(&state)?;
+    if !request.is_valid(&key, state.now()) {
+        return Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            "admin_key_not_registered",
+            "this request is not signed by the team's admin key",
+        ));
+    }
+    manifest_view(&state).map(Json)
+}
+
+fn registered_admin_key(state: &AppState) -> AppResult<PublicKey> {
+    store::admin_key(&state.db())?.ok_or_else(|| {
+        ApiError::new(
+            StatusCode::CONFLICT,
+            "admin_key_missing",
+            "register the admin key from the Banc application first",
+        )
+    })
+}
+
+fn manifest_view(state: &AppState) -> AppResult<ManifestView> {
+    let published = latest_manifest(state)?;
     let current = published
         .as_ref()
         .map(|view| store::ManifestDraft::from(view.manifest.clone()));
     let draft = store::manifest_draft(&state.db())?;
     let changed = draft.is_some() && draft != current;
     let next_version = published.as_ref().map_or(1, |view| view.version + 1);
-    Ok(Json(ManifestView {
+    Ok(ManifestView {
         published,
         draft: draft.or(current).unwrap_or_default(),
         changed,
         next_version,
-    }))
+    })
 }
 
 /// Every file a manifest lists must be in the store, with the same size.
@@ -830,17 +863,28 @@ async fn publish_manifest(
     AdminSession(admin): AdminSession,
     Body(signed): Body<SignedManifest>,
 ) -> AppResult<StatusCode> {
-    let key = store::admin_key(&state.db())?.ok_or_else(|| {
-        ApiError::new(
-            StatusCode::CONFLICT,
-            "admin_key_missing",
-            "register the admin key from the Banc application first",
-        )
-    })?;
+    store_signed_manifest(&state, &signed, Some(admin.id))
+}
+
+/// Publishes from the application. The manifest's own signature is the
+/// proof: nothing else can make the server accept it.
+async fn publish_with_key(
+    State(state): State<Arc<AppState>>,
+    Body(signed): Body<SignedManifest>,
+) -> AppResult<StatusCode> {
+    store_signed_manifest(&state, &signed, None)
+}
+
+fn store_signed_manifest(
+    state: &AppState,
+    signed: &SignedManifest,
+    admin: Option<i64>,
+) -> AppResult<StatusCode> {
+    let key = registered_admin_key(state)?;
     let manifest = signed
         .open(&key, None)
         .map_err(|error| ApiError::bad_request("bad_signature", error.to_string()))?;
-    check_files(&state, &manifest)?;
+    check_files(state, &manifest)?;
     let version = manifest.version;
     {
         let mut db = state.db();
@@ -852,10 +896,10 @@ async fn publish_manifest(
                 format!("the next manifest is version {next}"),
             ));
         }
-        store::publish_manifest(&mut db, version, &signed, admin.id, state.now())?;
+        store::publish_manifest(&mut db, version, signed, admin, state.now())?;
     }
     state.manifest_version.send_replace(version);
-    tracing::warn!(admin = admin.id, version, "manifest published");
+    tracing::warn!(?admin, version, "manifest published");
     Ok(StatusCode::NO_CONTENT)
 }
 
