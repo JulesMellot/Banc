@@ -7,6 +7,8 @@ import {
   gridCell,
   gridColumns,
   kindsFor,
+  packageFromFile,
+  packageId,
   parseArgs,
   tidyBuild,
 } from './manifest';
@@ -49,6 +51,46 @@ describe('manifest editing', () => {
   it('reads arguments typed on one line', () => {
     expect(parseArgs('  /S   /NORESTART ')).toEqual(['/S', '/NORESTART']);
     expect(parseArgs('')).toEqual([]);
+  });
+
+  it('makes identifiers the server accepts', () => {
+    expect(packageId('4_SGamut3CineSLog3_To_Cine+709.cube', [])).toBe(
+      '4-sgamut3cineslog3-to-cine-709',
+    );
+    expect(packageId('Étalonnage été.cube', [])).toBe('etalonnage-ete');
+    expect(packageId('___.cube', [])).toBe('paquet');
+    expect(packageId('a.cube', ['a', 'a-2'])).toBe('a-3');
+    expect(packageId(`${'x'.repeat(200)}.cube`, []).length).toBeLessThanOrEqual(64);
+  });
+
+  it('sends a LUT to the LUT folder of every system', () => {
+    const item = packageFromFile({ ...file, name: 'Team.cube' }, []);
+    expect(item.id).toBe('team');
+    expect(item.required).toBe(true);
+    expect(item.builds.map((build) => build.os)).toEqual(['macos', 'windows', 'linux']);
+    for (const build of item.builds) {
+      expect(build.kind).toBe('copy');
+      expect(build.place).toBe('lut');
+      expect(build.file?.name).toBe('Team.cube');
+    }
+  });
+
+  it('recognises what a file is', () => {
+    const place = (name: string) => packageFromFile({ ...file, name }, []).builds[0]?.place;
+    expect(place('Glow.zip')).toBe('ofx');
+    expect(place('Sony LUTs.zip')).toBe('lut');
+    expect(place('Title.drfx')).toBe('fusion_templates');
+    expect(place('tool.py')).toBe('scripts');
+    const font = packageFromFile({ ...file, name: 'Inter.otf' }, []);
+    expect(font.builds[0]?.kind).toBe('font');
+    expect(font.builds[0]?.place).toBeNull();
+  });
+
+  it('keeps an installer on its own system', () => {
+    const item = packageFromFile({ ...file, name: 'Plugin.pkg' }, []);
+    expect(item.builds).toHaveLength(1);
+    expect(item.builds[0]?.os).toBe('macos');
+    expect(item.builds[0]?.kind).toBe('pkg');
   });
 
   it('writes sizes the French way', () => {

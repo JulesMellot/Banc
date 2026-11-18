@@ -1,10 +1,12 @@
-//! The few server calls the application makes itself, with an admin account:
-//! registering the admin key, and publishing a signed manifest.
+//! The few server calls the application makes itself: registering the admin
+//! key with an admin account, and publishing a manifest with the key alone.
 
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use banc_proto::keys::{PublicKey, SecretKey};
-use banc_proto::manifest::{Manifest, Package, RequiredResolve, SignedManifest};
+use banc_proto::keys::SecretKey;
+use banc_proto::manifest::{
+    DraftRequest, Manifest, Package, RequiredResolve, SignedManifest, DRAFT_PATH, PUBLISH_PATH,
+};
 use reqwest::header::{COOKIE, SET_COOKIE};
 use serde::Deserialize;
 
@@ -103,6 +105,7 @@ pub async fn register_admin_key(
 #[derive(Debug, Deserialize)]
 pub struct ManifestView {
     pub draft: Draft,
+    pub changed: bool,
     pub next_version: u64,
 }
 
@@ -128,98 +131,57 @@ pub fn manifest_to_sign(view: ManifestView) -> CommandResult<Manifest> {
     Ok(manifest)
 }
 
-/// A session open between the preview and the signature.
+/// The manifest the admin is reading, and where it goes once signed.
 pub struct PublishSession {
     pub server: String,
-    pub cookie: String,
     pub manifest: Manifest,
 }
 
-/// Logs in and reads the manifest to publish. Refuses a server that does not
-/// know this workstation's admin key: the workstations would refuse the
-/// manifest.
+/// Reads the manifest to publish, and whether it differs from what is
+/// published. The server refuses a key it does not know: the workstations
+/// would refuse the manifest too.
 pub async fn prepare_publication(
     server: &str,
-    name: &str,
-    password: &str,
-    key: &PublicKey,
-) -> CommandResult<PublishSession> {
-    #[derive(Deserialize)]
-    struct AdminKey {
-        public_key: Option<PublicKey>,
-    }
-
-    let client = client()?;
-    let cookie = login(&client, server, name, password).await?;
-    let prepared = async {
-        let registered: AdminKey = read(&client, server, &cookie, "admin-key").await?;
-        if registered.public_key.as_ref() != Some(key) {
-            return Err(CommandError::new(
-                "admin_key_not_registered",
-                "the server knows another admin key",
-            ));
-        }
-        let view: ManifestView = read(&client, server, &cookie, "manifest").await?;
-        manifest_to_sign(view)
-    }
-    .await;
-    match prepared {
-        Ok(manifest) => Ok(PublishSession {
-            server: server.to_owned(),
-            cookie,
-            manifest,
-        }),
-        Err(error) => {
-            logout(&client, server, &cookie).await;
-            Err(error)
-        }
-    }
-}
-
-async fn read<T: serde::de::DeserializeOwned>(
-    client: &reqwest::Client,
-    server: &str,
-    cookie: &str,
-    path: &str,
-) -> CommandResult<T> {
-    let response = client
-        .get(format!("{server}/api/v1/admin/{path}"))
-        .header(COOKIE, cookie)
+    key: &SecretKey,
+) -> CommandResult<(PublishSession, bool)> {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| CommandError::new("internal", e))?
+        .as_secs();
+    let now = i64::try_from(now).map_err(|e| CommandError::new("internal", e))?;
+    let response = client()?
+        .post(format!("{server}{DRAFT_PATH}"))
+        .json(&DraftRequest::signed(key, now))
         .send()
         .await
         .map_err(unreachable)?;
     if !response.status().is_success() {
         return Err(refusal(response, "internal").await);
     }
-    response
+    let view: ManifestView = response
         .json()
         .await
-        .map_err(|e| CommandError::new("internal", e))
+        .map_err(|e| CommandError::new("internal", e))?;
+    let changed = view.changed;
+    let session = PublishSession {
+        server: server.to_owned(),
+        manifest: manifest_to_sign(view)?,
+    };
+    Ok((session, changed))
 }
 
-/// Sends the signed manifest and closes the session.
+/// Sends the signed manifest. Its signature is all the server asks for.
 pub async fn publish(session: &PublishSession, signed: &SignedManifest) -> CommandResult<()> {
-    let client = client()?;
-    let response = client
-        .post(format!("{}/api/v1/admin/manifest", session.server))
-        .header(COOKIE, &session.cookie)
+    let response = client()?
+        .post(format!("{}{PUBLISH_PATH}", session.server))
         .json(signed)
         .send()
         .await
         .map_err(unreachable)?;
-    let result = if response.status().is_success() {
+    if response.status().is_success() {
         Ok(())
     } else {
         Err(refusal(response, "internal").await)
-    };
-    logout(&client, &session.server, &session.cookie).await;
-    result
-}
-
-/// Closes a session that will not publish.
-pub async fn cancel(session: &PublishSession) {
-    if let Ok(client) = client() {
-        logout(&client, &session.server, &session.cookie).await;
     }
 }
 

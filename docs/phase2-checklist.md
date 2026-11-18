@@ -2,7 +2,14 @@
 
 CI proves the rules with a real server and a real agent on Linux, macOS and Windows, in temporary folders. This checklist covers what only a real workstation can show. Record the results here, with the date and the versions.
 
-Prepare in the web admin, section "Paquets de l'équipe": upload the files, add the packages, save the draft. Publish from the Banc application of the workstation that holds the admin key.
+In the web admin, section "Paquets de l'équipe": upload the files, then click "Enregistrer et publier". The Banc application of the workstation that holds the admin key opens on what is about to be published, and "Signer et publier" sends it.
+
+## Updates
+
+- [ ] After installing a new version by hand, the machines list of the web admin shows that version within two minutes.
+- [ ] The window shows the version and "Banc est à jour". "Rechercher une mise à jour" answers.
+- [ ] A new release installs by itself, with Resolve closed, within the hour.
+- [ ] With Resolve open, the window says the version waits for Resolve to close.
 
 ## On a Mac, a Windows PC and a Linux workstation
 

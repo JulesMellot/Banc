@@ -16,12 +16,14 @@ The window and the tray icon never talk to the server about the workstation: the
 
 A Unix socket (`/run/banc/agent.sock` on Linux, `/var/run/banc/agent.sock` on macOS) or the named pipe `\\.\pipe\banc-agent` on Windows. Any local user may connect; the pipe's ACL lets authenticated users read and write.
 
-One request per connection, framed like the control channel (`banc_proto::control::write_frame`). Two requests exist (`banc_proto::local`):
+One request per connection, framed like the control channel (`banc_proto::control::write_frame`). The requests are in `banc_proto::local`:
 
-- `status`: version, enrollment (server, machine, roles, admin key fingerprint, connection state), inventory;
+- `status`: version, enrollment (server, machine, roles, admin key fingerprint, connection state), inventory, packages, automatic update;
+- `check_update`: looks for a new version now. Only a version signed with the release key is installed;
+- `confirm_manual`: a person followed the instructions of a manual package;
 - `enroll`: a `banc://join` link, or a server address and the key to copy, and an optional machine name. Refused while the machine belongs to a team. A machine the server has revoked can join again with a new invitation: it gets a new machine key, and the revoked one stays revoked.
 
-Nothing on this endpoint runs a command or changes anything else on the workstation.
+Nothing on this endpoint runs a command chosen by the caller.
 
 ## Joining a team
 

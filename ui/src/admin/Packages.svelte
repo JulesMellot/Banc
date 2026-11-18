@@ -14,6 +14,7 @@
     blankPackage,
     fileSize,
     kindsFor,
+    packageFromFile,
     parseArgs,
     PLACES,
     SYSTEMS,
@@ -62,12 +63,23 @@
     changeBuild(item, index, { file });
   }
 
+  const usedBy = (file: StoredFile) =>
+    draft.packages.some((item) => item.builds.some((build) => build.file?.blake3 === file.blake3));
+
+  function addPackage(file: StoredFile) {
+    if (!usedBy(file)) {
+      const taken = draft.packages.map((item) => item.id);
+      draft.packages.push(packageFromFile(file, taken));
+      saved = false;
+    }
+  }
+
   async function upload(event: Event) {
     const input = event.currentTarget as HTMLInputElement;
     for (const file of Array.from(input.files ?? [])) {
       uploading = file.name;
       await attempt(async () => {
-        await api.uploadPackageFile(file);
+        addPackage(await api.uploadPackageFile(file));
       });
     }
     uploading = '';
@@ -85,6 +97,8 @@
     saved = await attempt(() => api.saveManifestDraft(content));
     if (saved) {
       await onChanged();
+      // The application takes over: it shows the draft and signs it.
+      window.location.href = 'banc://publish';
     }
   }
 </script>
@@ -107,7 +121,14 @@
   {:else}
     <ul>
       {#each files as file (file.blake3)}
-        <li>{file.name} <small>{fileSize(file.size)}</small></li>
+        <li>
+          {file.name} <small>{fileSize(file.size)}</small>
+          {#if !usedBy(file)}
+            <button type="button" onclick={() => addPackage(file)}>
+              {t('packages.add_file')}
+            </button>
+          {/if}
+        </li>
       {/each}
     </ul>
   {/if}

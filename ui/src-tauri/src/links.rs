@@ -12,6 +12,11 @@ pub struct Links(Mutex<Option<String>>);
 
 /// Event sent to the interface when a link arrives while it runs.
 pub const EVENT: &str = "banc-link";
+/// Event sent when the web admin asks for the draft to be signed.
+pub const PUBLISH_EVENT: &str = "banc-publish";
+/// The link the web admin opens after saving a draft. It carries nothing: the
+/// window reads the draft from the server and shows it before any signature.
+const PUBLISH_LINK: &str = "banc://publish";
 
 pub fn watch(app: &tauri::App) {
     let handle = app.handle().clone();
@@ -27,6 +32,13 @@ pub fn watch(app: &tauri::App) {
     }
     app.deep_link().on_open_url(move |event| {
         if let Some(url) = event.urls().first() {
+            if url.as_str().starts_with(PUBLISH_LINK) {
+                if let Some(window) = handle.get_webview_window("main") {
+                    let _ = window.set_focus();
+                }
+                let _ = handle.emit(PUBLISH_EVENT, ());
+                return;
+            }
             remember(&handle, url.to_string());
             let _ = handle.emit(EVENT, url.to_string());
         }
