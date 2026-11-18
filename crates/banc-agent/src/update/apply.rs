@@ -229,30 +229,26 @@ pub fn apply(
     } = pending;
     if let Err(error) = verify_staged(&work.staged(), files) {
         tracing::error!(%version, "update refused: {error:#}");
-        remember_failure(failed, *version);
+        remember_failure(failed, *version, &format!("{error:#}"));
         return finish(work, supervisor, Outcome::NotStarted);
     }
     if let Err(error) = supervisor.stop() {
         tracing::error!(%version, "cannot stop the service: {error}");
         return finish(work, supervisor, Outcome::NotStarted);
     }
-    let installed = match swap(root, work, files) {
+    let problem = match swap(root, work, files) {
         Ok(()) => match supervisor.start() {
-            Ok(()) => is_healthy(supervisor, *version, timing),
-            Err(error) => {
-                tracing::error!(%version, "the new version does not start: {error}");
-                false
-            }
+            Ok(()) if is_healthy(supervisor, *version, timing) => None,
+            Ok(()) => Some("the new version does not answer".to_owned()),
+            Err(error) => Some(format!("the new version does not start: {error}")),
         },
-        Err(error) => {
-            tracing::error!(%version, "replacing the files: {error}");
-            false
-        }
+        Err(error) => Some(format!("replacing the files: {error}")),
     };
-    if installed {
+    let Some(problem) = problem else {
         tracing::info!(%version, "update installed");
         return finish(work, supervisor, Outcome::Installed);
-    }
+    };
+    tracing::error!(%version, "{problem}");
 
     tracing::error!(%version, "the new version is not working, going back");
     if let Err(error) = supervisor.stop() {
@@ -261,12 +257,19 @@ pub fn apply(
     if let Err(error) = roll_back(root, work, files) {
         tracing::error!("putting the previous version back: {error}");
     }
-    remember_failure(failed, *version);
+    remember_failure(failed, *version, &problem);
     finish(work, supervisor, Outcome::RolledBack)
 }
 
-fn remember_failure(failed: &Path, version: Version) {
-    if let Err(error) = banc_platform::fs::write_private(failed, version.to_string().as_bytes()) {
+/// The file that says why the version in `failed` did not install.
+pub fn reason_file(failed: &Path) -> PathBuf {
+    failed.with_extension("reason")
+}
+
+fn remember_failure(failed: &Path, version: Version, reason: &str) {
+    let written = banc_platform::fs::write_private(failed, version.to_string().as_bytes())
+        .and_then(|()| banc_platform::fs::write_private(&reason_file(failed), reason.as_bytes()));
+    if let Err(error) = written {
         tracing::error!("remembering the failed version: {error}");
     }
 }
@@ -457,6 +460,9 @@ mod tests {
             assert_eq!(outcome, Outcome::RolledBack);
             assert_eq!(read(&s.root.join(program)), b"old agent");
             assert_eq!(std::fs::read_to_string(&s.failed).unwrap(), "1.2.0");
+            assert!(!std::fs::read_to_string(reason_file(&s.failed))
+                .unwrap()
+                .is_empty());
             // Started for the new version, then for the old one.
             assert_eq!(service.starts.get(), 2);
         }

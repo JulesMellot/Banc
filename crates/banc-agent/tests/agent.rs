@@ -165,6 +165,10 @@ impl Agent {
     }
 
     fn start_with(dir: &Path, resolve_open: ResolveOpen) -> Self {
+        Self::start_full(dir, resolve_open, None)
+    }
+
+    fn start_full(dir: &Path, resolve_open: ResolveOpen, program: Option<PathBuf>) -> Self {
         let socket = banc_platform::local::endpoint_in(dir, "agent");
         let config = Config {
             state_dir: dir.join("state"),
@@ -174,6 +178,8 @@ impl Agent {
             places: places(dir),
             resolve_open,
             package_retry: Duration::from_millis(200),
+            update: None,
+            program,
         };
         let (stop, stopped) = oneshot::channel::<()>();
         let task = tokio::spawn(banc_agent::run(config, async {
@@ -816,5 +822,50 @@ async fn a_manual_package_waits_for_a_person() {
             state_of(report, "licence") == Some(PackageState::Installed)
         })
         .await;
+    agent.stop().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_agent_replaced_by_hand_stops_so_that_the_new_one_starts() {
+    let dir = tempfile::tempdir().unwrap();
+    let program = dir.path().join("banc-agent");
+    std::fs::write(&program, b"old").unwrap();
+    let agent = Agent::start_full(dir.path(), Arc::new(|| false), Some(program.clone()));
+    assert!(matches!(
+        agent.ask(&Request::Status).await,
+        Response::Status(_)
+    ));
+    assert!(!agent.task.is_finished(), "nothing was replaced");
+
+    // Installed a while ago, as a dragged application keeps its date.
+    std::fs::write(&program, b"new").unwrap();
+    let date = std::time::SystemTime::now() - Duration::from_secs(3600);
+    std::fs::File::options()
+        .write(true)
+        .open(&program)
+        .unwrap()
+        .set_modified(date)
+        .unwrap();
+    assert!(matches!(
+        agent.ask(&Request::Status).await,
+        Response::Status(_)
+    ));
+    let ended = tokio::time::timeout(Duration::from_secs(10), agent.task)
+        .await
+        .expect("the agent keeps running on its old program")
+        .unwrap();
+    assert!(ended.is_err(), "the service manager restarts a failure");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_build_that_does_not_update_itself_says_so() {
+    let dir = tempfile::tempdir().unwrap();
+    let agent = Agent::start(dir.path());
+    let answer = agent.ask(&Request::CheckUpdate).await;
+    assert_eq!(error_code(&answer), "updates_unavailable");
+    let Response::Status(status) = agent.ask(&Request::Status).await else {
+        panic!("status expected");
+    };
+    assert_eq!(status.update, None);
     agent.stop().await;
 }

@@ -4,15 +4,23 @@
 //! version. A newer version is downloaded and checked file by file, waits
 //! for Resolve to be closed, then [`apply`] installs it. The download site
 //! is not trusted: only the release key decides what gets installed.
+//!
+//! [`Monitor`] tells the window where this stands, and lets a person ask for
+//! a check right away.
 
 pub mod apply;
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
 
 use anyhow::{bail, Context};
 use banc_proto::keys::PublicKey;
+use banc_proto::local::{UpdatePhase, UpdateStatus};
+use banc_proto::packages::short_error;
 use banc_proto::update::{self, Release, ReleaseFile, SignedRelease, Version};
+use tokio::sync::Notify;
 
 use self::apply::{Pending, Work};
 
@@ -51,6 +59,8 @@ pub struct Settings {
     pub platform: String,
     pub first_check: Duration,
     pub every: Duration,
+    /// How long the copy of the agent is given to finish an update.
+    pub takeover: Duration,
 }
 
 impl Settings {
@@ -76,6 +86,7 @@ impl Settings {
             ),
             first_check: test_interval.unwrap_or(FIRST_CHECK),
             every: test_interval.unwrap_or(CHECK_EVERY),
+            takeover: UPDATE_TIMEOUT,
         }))
     }
 
@@ -88,54 +99,130 @@ pub fn failed_file(state_dir: &Path) -> PathBuf {
     state_dir.join(FAILED_FILE)
 }
 
-/// Checks for a new version until the agent stops.
-pub async fn watch(settings: Settings) {
-    tokio::time::sleep(settings.first_check).await;
-    loop {
-        match check(&settings).await {
-            Ok(true) => {
-                // The copy of the agent takes over and stops this service.
-                std::future::pending::<()>().await;
-            }
-            Ok(false) => {}
-            Err(error) => tracing::warn!("update check failed: {error:#}"),
+/// Where the update stands, shared with the local endpoint.
+#[derive(Default)]
+pub struct Monitor {
+    status: Mutex<UpdateStatus>,
+    wake: Notify,
+    /// A person asked: a version that failed here gets another chance.
+    retry_failed: AtomicBool,
+}
+
+impl Monitor {
+    pub fn status(&self) -> UpdateStatus {
+        self.status
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    }
+
+    /// Looks for a new version now.
+    pub fn check_now(&self) {
+        self.retry_failed.store(true, Ordering::Relaxed);
+        self.wake.notify_one();
+    }
+
+    fn set(&self, phase: UpdatePhase, version: Option<Version>, error: Option<String>) {
+        *self
+            .status
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = UpdateStatus {
+            phase,
+            version: version.map(|version| version.to_string()),
+            error: error.map(|error| short_error(&error)),
+        };
+    }
+
+    /// Waits for `delay`, or for a person asking for a check.
+    async fn wait(&self, delay: Duration) {
+        tokio::select! {
+            () = tokio::time::sleep(delay) => {}
+            () = self.wake.notified() => {}
         }
-        tokio::time::sleep(settings.every).await;
     }
 }
 
-/// `true` when an update has been handed over.
-async fn check(settings: &Settings) -> anyhow::Result<bool> {
+/// How a check ended.
+#[derive(Debug, PartialEq, Eq)]
+enum Checked {
+    UpToDate,
+    /// The newest version already failed on this machine.
+    FailedHere(Version),
+    /// The copy of the agent is installing this version.
+    HandedOver(Version),
+}
+
+/// Checks for a new version until the agent stops.
+pub async fn watch(settings: Settings, monitor: std::sync::Arc<Monitor>) {
+    monitor.wait(settings.first_check).await;
+    loop {
+        monitor.set(UpdatePhase::Checking, None, None);
+        match check(&settings, &monitor).await {
+            Ok(Checked::UpToDate) => monitor.set(UpdatePhase::UpToDate, None, None),
+            Ok(Checked::FailedHere(version)) => {
+                let reason = read_failure_reason(&settings.failed_file());
+                monitor.set(UpdatePhase::Failed, Some(version), reason);
+            }
+            Ok(Checked::HandedOver(version)) => {
+                // The copy of the agent stops this service when it succeeds.
+                // Still running after that long: it never took over.
+                tokio::time::sleep(settings.takeover).await;
+                tracing::error!(%version, "the update did not start");
+                monitor.set(
+                    UpdatePhase::Failed,
+                    Some(version),
+                    Some("the update did not start".to_owned()),
+                );
+            }
+            Err(error) => {
+                tracing::warn!("update check failed: {error:#}");
+                monitor.set(UpdatePhase::Failed, None, Some(format!("{error:#}")));
+            }
+        }
+        monitor.wait(settings.every).await;
+    }
+}
+
+async fn check(settings: &Settings, monitor: &Monitor) -> anyhow::Result<Checked> {
     let root = apply::install_root(&settings.program).context("no folder for the agent")?;
     let work = Work::for_root(&root);
     if is_running(&work) {
-        return Ok(false);
+        return Ok(Checked::UpToDate);
     }
     remove_leftovers(&work)?;
 
     let client = http_client()?;
     let Some(signed) = fetch_description(&client, &settings.site).await? else {
-        return Ok(false);
+        return Ok(Checked::UpToDate);
     };
     let release = signed.open(&settings.key)?;
-    let failed = read_failed(&settings.failed_file());
-    if !update::should_install(settings.current, release.version, failed) {
-        return Ok(false);
+    let retry = monitor.retry_failed.swap(false, Ordering::Relaxed);
+    let failed = read_failed(&settings.failed_file()).filter(|_| !retry);
+    let version = release.version;
+    if !update::should_install(settings.current, version, failed) {
+        return Ok(if version > settings.current && failed == Some(version) {
+            Checked::FailedHere(version)
+        } else {
+            Checked::UpToDate
+        });
     }
     let Some(files) = release.files(&settings.platform) else {
         tracing::debug!(platform = settings.platform, "no release for this platform");
-        return Ok(false);
+        return Ok(Checked::UpToDate);
     };
-    tracing::info!(version = %release.version, "downloading an update");
+    tracing::info!(%version, "downloading an update");
+    monitor.set(UpdatePhase::Downloading, Some(version), None);
     download_all(&client, settings, &release, files, &work).await?;
 
     while banc_platform::machine::resolve_running() {
+        monitor.set(UpdatePhase::WaitingForResolve, Some(version), None);
         tracing::debug!("update waiting for Resolve to close");
         tokio::time::sleep(RESOLVE_POLL).await;
     }
-    hand_over(settings, &root, &work, release.version, files)?;
-    tracing::info!(version = %release.version, "installing the update");
-    Ok(true)
+    monitor.set(UpdatePhase::Installing, Some(version), None);
+    hand_over(settings, &root, &work, version, files)?;
+    tracing::info!(%version, "installing the update");
+    Ok(Checked::HandedOver(version))
 }
 
 /// An update in progress: its copy of the agent is at work.
@@ -160,6 +247,11 @@ fn remove_leftovers(work: &Work) -> anyhow::Result<()> {
 
 fn read_failed(path: &Path) -> Option<Version> {
     std::fs::read_to_string(path).ok()?.trim().parse().ok()
+}
+
+fn read_failure_reason(failed: &Path) -> Option<String> {
+    let reason = std::fs::read_to_string(apply::reason_file(failed)).ok()?;
+    Some(reason.trim().to_owned()).filter(|reason| !reason.is_empty())
 }
 
 /// No read limit on the whole request: a slow connection may take minutes to
@@ -427,6 +519,78 @@ mod tests {
         assert_eq!(read_failed(&path), Some("1.2.0".parse().unwrap()));
         std::fs::write(&path, "garbage").unwrap();
         assert_eq!(read_failed(&path), None);
+    }
+
+    #[test]
+    fn the_reason_of_a_failure_is_read_back() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = failed_file(tmp.path());
+        assert_eq!(read_failure_reason(&path), None);
+        std::fs::write(apply::reason_file(&path), "replacing the files: denied\n").unwrap();
+        assert_eq!(
+            read_failure_reason(&path).as_deref(),
+            Some("replacing the files: denied")
+        );
+    }
+
+    fn settings(tmp: &Path, site: String, current: &str) -> Settings {
+        Settings {
+            current: current.parse().unwrap(),
+            key: SecretKey::from_bytes(&[9; 32]).public(),
+            site,
+            program: tmp.join("Banc/banc-agent"),
+            state_dir: tmp.to_path_buf(),
+            platform: "linux-x86_64".to_owned(),
+            first_check: Duration::from_secs(3600),
+            every: Duration::from_secs(3600),
+            takeover: Duration::from_secs(3600),
+        }
+    }
+
+    fn published(version: &str) -> String {
+        site(HashMap::from([(
+            "/latest/download/update.json".to_owned(),
+            signed(version, release_file(b"agent")),
+        )]))
+    }
+
+    #[tokio::test]
+    async fn the_same_version_is_up_to_date() {
+        let tmp = tempfile::tempdir().unwrap();
+        let settings = settings(tmp.path(), published("1.2.0"), "1.2.0");
+        let checked = check(&settings, &Monitor::default()).await.unwrap();
+        assert_eq!(checked, Checked::UpToDate);
+    }
+
+    #[tokio::test]
+    async fn a_version_that_failed_here_is_reported_until_a_person_retries() {
+        let tmp = tempfile::tempdir().unwrap();
+        // Nothing to download: a retry fails on the missing file.
+        let settings = settings(tmp.path(), published("1.2.0"), "1.1.0");
+        std::fs::write(settings.failed_file(), "1.2.0").unwrap();
+        let monitor = Monitor::default();
+        let checked = check(&settings, &monitor).await.unwrap();
+        assert_eq!(checked, Checked::FailedHere("1.2.0".parse().unwrap()));
+
+        monitor.check_now();
+        let retried = check(&settings, &monitor).await.unwrap_err();
+        assert!(
+            format!("{retried:#}").contains("downloading"),
+            "{retried:#}"
+        );
+        assert_eq!(monitor.status().phase, UpdatePhase::Downloading);
+        let again = check(&settings, &monitor).await.unwrap();
+        assert_eq!(again, Checked::FailedHere("1.2.0".parse().unwrap()));
+    }
+
+    #[tokio::test]
+    async fn a_person_does_not_wait_for_the_next_hour() {
+        let monitor = Monitor::default();
+        monitor.check_now();
+        let hour = monitor.wait(Duration::from_secs(3600));
+        assert!(tokio::time::timeout(Duration::from_secs(5), hour)
+            .await
+            .is_ok());
     }
 
     #[test]
