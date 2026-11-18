@@ -218,7 +218,7 @@ fn inventory(version: &str) -> Inventory {
         hostname: "station-3.local".to_owned(),
         os_version: "macOS 26.1".to_owned(),
         resolve: Some(ResolveInstall {
-            edition: ResolveEdition::Studio,
+            edition: Some(ResolveEdition::Studio),
             version: version.to_owned(),
         }),
     }

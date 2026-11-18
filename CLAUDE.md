@@ -120,6 +120,7 @@ Phase 1 decisions (workstation side):
 - **Interface text outside the web frontend**: the session helper reads the same `fr.json` (`include_str!`).
 - **Release profile optimized for size** (`opt-level = "s"`, fat LTO), except argon2, blake2 and blake3: the agent's code pages count in its resident memory. Agent binary 13 MB to 7.5 MB, enrolled agent 14.1 MB to 10.2 MB.
 - **iroh keep-alives**: a connected agent wakes up about twice a minute (QUIC keep-alive every 5 s per path, relay ping every 15 s), 0.03% CPU. iroh's defaults are kept: they keep NAT mappings open for phase 3's peer-to-peer. `QuicTransportConfig` is the knob if it ever matters on laptops.
+- **Resolve edition unknown until Resolve answers**: Studio installs as "DaVinci Resolve" on macOS and Windows, so the installed files cannot tell it from the free edition. `ResolveInstall::edition` is `None` rather than a guess.
 - **`cargo deny`**: tao lists GTK for Linux although it is only a macOS and Windows dependency here; the gtk tree is skipped with that reason.
 
 ## Commits and CI

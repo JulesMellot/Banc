@@ -86,8 +86,11 @@ named_enum! {
 /// An installed DaVinci Resolve.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResolveInstall {
-    pub edition: ResolveEdition,
-    /// As Resolve writes it, `21.1` or `21.1.2`.
+    /// `None`: the installed files do not say. Studio and the free edition
+    /// share the name "DaVinci Resolve" on macOS and Windows.
+    #[serde(default)]
+    pub edition: Option<ResolveEdition>,
+    /// Without the build number, `21.1` or `21.1.2`.
     pub version: String,
 }
 
@@ -127,7 +130,7 @@ mod tests {
             hostname: "station-3".to_owned(),
             os_version: "macOS 26.1".to_owned(),
             resolve: Some(ResolveInstall {
-                edition: ResolveEdition::Studio,
+                edition: Some(ResolveEdition::Studio),
                 version: "21.1".to_owned(),
             }),
         };
@@ -137,5 +140,14 @@ mod tests {
             serde_json::from_value::<Inventory>(json).unwrap(),
             inventory
         );
+    }
+
+    #[test]
+    fn resolve_edition_may_be_unknown() {
+        let install: ResolveInstall = serde_json::from_str(r#"{"version":"21.1.0"}"#).unwrap();
+        assert_eq!(install.edition, None);
+        let install: ResolveInstall =
+            serde_json::from_str(r#"{"edition":"free","version":"21.1.0"}"#).unwrap();
+        assert_eq!(install.edition, Some(ResolveEdition::Free));
     }
 }

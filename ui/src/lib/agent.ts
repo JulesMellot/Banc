@@ -9,7 +9,7 @@ export type ConnectionState = 'connecting' | 'connected' | 'revoked';
 export interface Inventory {
   hostname: string;
   os_version: string;
-  resolve: { edition: 'studio' | 'free'; version: string } | null;
+  resolve: { edition: 'studio' | 'free' | null; version: string } | null;
 }
 
 export interface Enrollment {
