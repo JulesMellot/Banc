@@ -1,10 +1,26 @@
 <script lang="ts">
-  import type { AgentStatus } from '../lib/agent';
+  import type { AgentStatus, Commands } from '../lib/agent';
+  import { errorMessage } from '../lib/format';
   import { t } from '../lib/i18n';
 
-  let { status }: { status: AgentStatus } = $props();
+  let {
+    banc,
+    status,
+    onChanged,
+  }: { banc: Commands; status: AgentStatus; onChanged: (next: AgentStatus) => void } = $props();
 
   const enrollment = $derived(status.enrollment);
+  const packages = $derived(status.packages ?? null);
+  let error = $state('');
+
+  async function confirmManual(id: string) {
+    error = '';
+    try {
+      onChanged(await banc.confirmManual(id));
+    } catch (e) {
+      error = errorMessage(e);
+    }
+  }
 </script>
 
 {#if enrollment}
@@ -33,6 +49,35 @@
       <dd><code>{enrollment.admin_fingerprint}</code></dd>
     </dl>
   </section>
+
+  {#if packages}
+    <section>
+      <h2>{t('workstation.packages')}</h2>
+      {#if error}<p role="alert">{error}</p>{/if}
+      {#if packages.resolve_mismatch}
+        <p role="alert">
+          {t('workstation.resolve_mismatch', { version: packages.resolve_required ?? '' })}
+        </p>
+      {/if}
+      {#if packages.refused}<p role="alert">{t('workstation.packages_refused')}</p>{/if}
+      <ul>
+        {#each packages.packages as item (item.id)}
+          <li>
+            <strong>{item.id}</strong>
+            {#if item.version}{item.version}{/if}
+            <span class={item.state}>{t(`package_state.${item.state}`)}</span>
+            {#if item.error}<br /><small>{item.error}</small>{/if}
+            {#if item.instructions}
+              <p>{item.instructions}</p>
+              <button onclick={() => confirmManual(item.id)}>
+                {t('workstation.manual_done')}
+              </button>
+            {/if}
+          </li>
+        {/each}
+      </ul>
+    </section>
+  {/if}
 {/if}
 
 <style>
@@ -47,8 +92,19 @@
   dd {
     margin: 0;
   }
+  ul {
+    list-style: none;
+    padding: 0;
+  }
+  li {
+    padding: 0.35rem 0;
+  }
+  .installed,
   .connected {
     color: #1b7a3a;
+  }
+  .failed {
+    color: #b00020;
   }
   .revoked {
     color: #b00020;

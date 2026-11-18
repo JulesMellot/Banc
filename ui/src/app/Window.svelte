@@ -62,7 +62,7 @@
   {:else if status && !status.enrollment}
     <Join {banc} {link} onJoined={(next) => ((status = next), (link = null))} />
   {:else if status?.enrollment}
-    <Workstation {status} />
+    <Workstation {banc} {status} onChanged={(next) => (status = next)} />
     {#if status.enrollment.connection === 'revoked'}
       <Join {banc} {link} onJoined={(next) => ((status = next), (link = null))} />
     {/if}

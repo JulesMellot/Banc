@@ -26,6 +26,7 @@ fn main() {
         }))
         .plugin(tauri_plugin_deep_link::init())
         .manage(admin::PendingKey::default())
+        .manage(admin::PendingManifest::default())
         .manage(links::Links::default())
         .setup(|app| {
             links::watch(app);
@@ -35,6 +36,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             agent::agent_status,
             agent::enroll,
+            agent::confirm_manual,
             agent::install_agent,
             agent::hostname,
             agent::read_link,
@@ -43,6 +45,9 @@ fn main() {
             admin::admin_key_confirm,
             admin::admin_key_restore,
             admin::admin_key_register,
+            admin::manifest_prepare,
+            admin::manifest_publish,
+            admin::manifest_cancel,
             links::pending_link,
         ])
         .run(tauri::generate_context!());

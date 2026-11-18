@@ -68,6 +68,79 @@ export interface NewInvite {
   machine_role: MachineRole;
 }
 
+export type PackageKind =
+  'copy' | 'pkg' | 'msi' | 'exe' | 'deb' | 'rpm' | 'run' | 'font' | 'manual';
+export type Place = 'ofx' | 'lut' | 'fusion_templates' | 'scripts';
+export type PackageState = 'installed' | 'pending' | 'failed' | 'manual' | 'unavailable';
+
+export interface PackageFile {
+  blake3: string;
+  size: number;
+  name: string;
+}
+
+export interface PackageBuild {
+  os: Os;
+  arch: string | null;
+  kind: PackageKind;
+  file: PackageFile | null;
+  place: Place | null;
+  args: string[];
+  instructions: string | null;
+}
+
+export interface Package {
+  id: string;
+  version: string;
+  required: boolean;
+  builds: PackageBuild[];
+}
+
+export interface ManifestDraft {
+  resolve: { version: string } | null;
+  packages: Package[];
+}
+
+export interface Manifest extends ManifestDraft {
+  version: number;
+}
+
+export interface ManifestView {
+  published: { version: number; published_at: number; manifest: Manifest } | null;
+  draft: ManifestDraft;
+  changed: boolean;
+  next_version: number;
+}
+
+export interface StoredFile {
+  blake3: string;
+  name: string;
+  size: number;
+  uploaded_at: number;
+}
+
+export interface PackageReport {
+  id: string;
+  version: string | null;
+  state: PackageState;
+  error: string | null;
+  instructions: string | null;
+}
+
+export interface WorkstationReport {
+  manifest_version: number | null;
+  refused: string | null;
+  resolve_mismatch: boolean;
+  resolve_required: string | null;
+  packages: PackageReport[];
+}
+
+export interface MachinePackages {
+  machine_id: number;
+  reported_at: number;
+  report: WorkstationReport;
+}
+
 /** An error answered by the server: `code` is stable, `message` is English. */
 export class ApiError extends Error {
   readonly status: number;
@@ -90,6 +163,10 @@ export function client(fetcher: Fetch = (input, init) => fetch(input, init)) {
       init.headers = { 'Content-Type': 'application/json' };
       init.body = JSON.stringify(body);
     }
+    return send<T>(path, init);
+  }
+
+  async function send<T>(path: string, init: RequestInit): Promise<T> {
     let response: Response;
     try {
       response = await fetcher(path, init);
@@ -126,6 +203,18 @@ export function client(fetcher: Fetch = (input, init) => fetch(input, init)) {
     createInvite: (invite: NewInvite) =>
       request<InviteCreated>('POST', '/api/v1/admin/invites', invite),
     revokeInvite: (id: number) => request<void>('POST', `/api/v1/admin/invites/${id}/revoke`),
+    packageFiles: () => request<StoredFile[]>('GET', '/api/v1/admin/packages/files'),
+    uploadPackageFile: (file: File) =>
+      send<StoredFile>(`/api/v1/admin/packages/files?name=${encodeURIComponent(file.name)}`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/octet-stream' },
+        body: file,
+      }),
+    packagesGrid: () => request<MachinePackages[]>('GET', '/api/v1/admin/packages/grid'),
+    manifest: () => request<ManifestView>('GET', '/api/v1/admin/manifest'),
+    saveManifestDraft: (draft: ManifestDraft) =>
+      request<void>('PUT', '/api/v1/admin/manifest/draft', draft),
   };
 }
 

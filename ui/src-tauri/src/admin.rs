@@ -10,9 +10,11 @@ use banc_platform::paths::Scope;
 use banc_platform::secrets::SecretStore;
 use banc_proto::admin_key;
 use banc_proto::keys::{AdminKeyRegistration, SecretKey};
+use banc_proto::manifest::{Manifest, SignedManifest};
 use serde::Serialize;
 
 use crate::error::{CommandError, CommandResult};
+use crate::server::PublishSession;
 
 /// Name of the admin key in the keychain.
 const SECRET_NAME: &str = "admin-key";
@@ -21,6 +23,18 @@ const SECRET_NAME: &str = "admin-key";
 /// has proved they wrote the recovery code down.
 #[derive(Default)]
 pub struct PendingKey(Mutex<Option<SecretKey>>);
+
+/// The manifest the admin is reading. What gets signed is this copy, never
+/// something sent back by the page.
+#[derive(Default)]
+pub struct PendingManifest(Mutex<Option<PublishSession>>);
+
+impl PendingManifest {
+    fn replace(&self, session: Option<PublishSession>) -> Option<PublishSession> {
+        let mut pending = self.0.lock().unwrap_or_else(|p| p.into_inner());
+        std::mem::replace(&mut pending, session)
+    }
+}
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
 pub struct KeyInfo {
@@ -152,6 +166,51 @@ pub async fn admin_key_register(
         .map_err(|e| CommandError::new("bad_server", e))?;
     crate::server::register_admin_key(&server, &name, &password, &key, replace).await?;
     Ok(info(&key))
+}
+
+/// Reads what the server proposes to publish, for the admin to check.
+#[tauri::command]
+pub async fn manifest_prepare(
+    pending: tauri::State<'_, PendingManifest>,
+    server: String,
+    name: String,
+    password: String,
+) -> CommandResult<Manifest> {
+    let key = load(&store()?)?
+        .ok_or_else(|| CommandError::new("no_admin_key", "create or restore the key first"))?;
+    let server = banc_proto::invite::normalize_server(&server)
+        .map_err(|e| CommandError::new("bad_server", e))?;
+    let session =
+        crate::server::prepare_publication(&server, &name, &password, &key.public()).await?;
+    let manifest = session.manifest.clone();
+    if let Some(previous) = pending.replace(Some(session)) {
+        crate::server::cancel(&previous).await;
+    }
+    Ok(manifest)
+}
+
+/// Signs the manifest the admin has just read, and publishes it.
+#[tauri::command]
+pub async fn manifest_publish(pending: tauri::State<'_, PendingManifest>) -> CommandResult<u64> {
+    let session = pending
+        .replace(None)
+        .ok_or_else(|| CommandError::new("no_pending_manifest", "read the manifest first"))?;
+    let key = load(&store()?)?
+        .ok_or_else(|| CommandError::new("no_admin_key", "create or restore the key first"))?;
+    let signed = SignedManifest::sign(&key, &session.manifest)
+        .map_err(|e| CommandError::new("bad_manifest", e))?;
+    crate::server::publish(&session, &signed).await?;
+    tracing::info!(version = session.manifest.version, "manifest published");
+    Ok(session.manifest.version)
+}
+
+/// The admin decided not to publish.
+#[tauri::command]
+pub async fn manifest_cancel(pending: tauri::State<'_, PendingManifest>) -> CommandResult<()> {
+    if let Some(session) = pending.replace(None) {
+        crate::server::cancel(&session).await;
+    }
+    Ok(())
 }
 
 /// What the server answers about its registered key.
