@@ -250,6 +250,89 @@ async fn enroll_connect_restart_revoke() {
     server.running.shutdown().await.unwrap();
 }
 
+/// Enrolls a new agent, then revokes it. Returns the revoked machine's key.
+async fn enrolled_then_revoked(server: &Server, agent: &Agent) -> String {
+    let answer = agent.ask(&enroll_link(&server.invite(1))).await;
+    assert!(matches!(answer, Response::Status(_)), "{answer:?}");
+    agent.wait_connection(Connection::Connected).await;
+    let machine = server.machines().remove(0);
+    let key = store::revoke_machine(&server.running.state.db(), machine.id, 1, NOW)
+        .unwrap()
+        .unwrap();
+    server.running.state.connections.disconnect(&key);
+    agent.wait_connection(Connection::Revoked).await;
+    machine.public_key
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_revoked_machine_joins_again_with_a_new_invitation() {
+    let server = Server::start().await;
+    let dir = tempfile::tempdir().unwrap();
+    let agent = Agent::start(dir.path());
+    let old_key = enrolled_then_revoked(&server, &agent).await;
+
+    let answer = agent.ask(&enroll_link(&server.invite(2))).await;
+    assert!(matches!(answer, Response::Status(_)), "{answer:?}");
+    agent.wait_connection(Connection::Connected).await;
+
+    // A new identity: the revoked key stays revoked.
+    let machines = server.machines();
+    assert_eq!(machines.len(), 2);
+    let active: Vec<_> = machines.iter().filter(|m| m.revoked_at.is_none()).collect();
+    assert_eq!(active.len(), 1);
+    assert_ne!(active[0].public_key, old_key);
+
+    // Back in a team, a further enrollment is refused again.
+    let again = agent.ask(&enroll_link(&server.invite(3))).await;
+    assert_eq!(error_code(&again), "already_enrolled");
+
+    // The new identity survives a restart.
+    agent.stop().await;
+    let agent = Agent::start(dir.path());
+    agent.wait_connection(Connection::Connected).await;
+
+    agent.stop().await;
+    server.running.shutdown().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_machine_revoked_before_a_restart_can_still_join_again() {
+    let server = Server::start().await;
+    let dir = tempfile::tempdir().unwrap();
+    let agent = Agent::start(dir.path());
+    enrolled_then_revoked(&server, &agent).await;
+
+    agent.stop().await;
+    let agent = Agent::start(dir.path());
+    agent.wait_connection(Connection::Revoked).await;
+
+    let answer = agent.ask(&enroll_link(&server.invite(2))).await;
+    assert!(matches!(answer, Response::Status(_)), "{answer:?}");
+    agent.wait_connection(Connection::Connected).await;
+
+    agent.stop().await;
+    server.running.shutdown().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_refused_invitation_leaves_a_revoked_machine_as_it_was() {
+    let server = Server::start().await;
+    let dir = tempfile::tempdir().unwrap();
+    let agent = Agent::start(dir.path());
+    enrolled_then_revoked(&server, &agent).await;
+
+    // An invitation nobody issued.
+    let mut forged = server.invite(2);
+    forged.token = InviteToken::from_bytes([9; 32]);
+    let answer = agent.ask(&enroll_link(&forged)).await;
+    assert!(matches!(answer, Response::Error { .. }), "{answer:?}");
+    agent.wait_connection(Connection::Revoked).await;
+    assert_eq!(server.machines().len(), 1);
+
+    agent.stop().await;
+    server.running.shutdown().await.unwrap();
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn connects_through_the_relay_on_the_http_port() {
     let server = Server::start_relay_only().await;

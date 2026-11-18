@@ -74,7 +74,7 @@ async fn enroll_request(
     let Some(_guard) = shared.begin_enrollment() else {
         return error("busy", "an enrollment is already running");
     };
-    if shared.enrolled().is_some() {
+    if !shared.can_enroll() {
         return error("already_enrolled", "this machine already belongs to a team");
     }
     tracing::info!(server = %invite.server, name, "enrolling");

@@ -19,7 +19,7 @@ A Unix socket (`/run/banc/agent.sock` on Linux, `/var/run/banc/agent.sock` on ma
 One request per connection, framed like the control channel (`banc_proto::control::write_frame`). Two requests exist (`banc_proto::local`):
 
 - `status`: version, enrollment (server, machine, roles, admin key fingerprint, connection state), inventory;
-- `enroll`: a `banc://join` link, or a server address and the key to copy, and an optional machine name. Refused once the machine is enrolled.
+- `enroll`: a `banc://join` link, or a server address and the key to copy, and an optional machine name. Refused while the machine belongs to a team. A machine the server has revoked can join again with a new invitation: it gets a new machine key, and the revoked one stays revoked.
 
 Nothing on this endpoint runs a command or changes anything else on the workstation.
 

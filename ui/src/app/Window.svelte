@@ -63,6 +63,9 @@
     <Join {banc} {link} onJoined={(next) => ((status = next), (link = null))} />
   {:else if status?.enrollment}
     <Workstation {status} />
+    {#if status.enrollment.connection === 'revoked'}
+      <Join {banc} {link} onJoined={(next) => ((status = next), (link = null))} />
+    {/if}
   {:else}
     <p>{t('common.loading')}</p>
   {/if}
