@@ -1,23 +1,31 @@
 # Installing the Banc server
 
-The server is one Docker image, `ghcr.io/julesmellot/banc-server`, for amd64 and arm64. Everything goes through one HTTP port, 8080: the API, the web admin and the relay. HTTPS comes from what is in front of it.
+The server is one Docker image, `ghcr.io/julesmellot/banc-server`, for amd64 and arm64. Nothing is compiled on your server. Everything goes through one HTTP port, 8080: the API, the web admin and the relay.
 
-The only required setting is `BANC_DOMAIN`, the domain name of the server. Data lives in the volume mounted on `/var/lib/banc`: keep it, it holds the team's database and the server's identity.
+There is no setting to fill in. The server learns its address when you create the first admin. Its data lives in the `banc-data` volume: keep it, it holds the team's database and the server's identity.
 
 ## On Coolify
 
-1. Point the domain's DNS record to the Coolify server.
-2. In Coolify: **New Resource**, **Docker Compose Empty**, then paste [`coolify.yaml`](coolify.yaml).
-3. In the environment variables, set `BANC_DOMAIN` to your domain, for example `banc.mycompany.com`.
-4. In the settings of the `banc-server` service, set the domain to `https://banc.mycompany.com:8080`. The `:8080` tells Coolify which port to use, it does not appear in the address.
-5. Deploy.
-6. Read the first-admin code in the service's terminal: `cat /var/lib/banc/setup-token`. Open `https://banc.mycompany.com` and enter it.
+1. Point your domain's DNS record to the Coolify server.
+2. **New Resource**, then **Public Repository**, and paste `https://github.com/JulesMellot/Banc`.
+3. Set **Build Pack** to **Docker Compose** and continue.
+4. Give the `banc` service your domain, in `https://`, for example `https://banc.mycompany.com`.
+5. **Deploy**.
+6. In the service's **Terminal**, run `cat /var/lib/banc/setup-token`.
+7. Open `https://banc.mycompany.com`, enter that code and create your admin account.
 
-Coolify's proxy may already use UDP 443, so this setup publishes no UDP port: agents reach the server through its relay, over HTTPS.
+## On Dokploy
+
+1. Point your domain's DNS record to the Dokploy server.
+2. Create a **Compose** service from the Git repository `https://github.com/JulesMellot/Banc`, branch `main`, path `./docker-compose.yml`.
+3. In **Domains**, add your domain for the service `banc`, port `8080`, with HTTPS.
+4. **Deploy**, then follow steps 6 and 7 above.
 
 ## On another platform
 
-Run the image with `BANC_DOMAIN`, a volume on `/var/lib/banc`, a tmpfs on `/run/banc` if the filesystem is read-only, and send HTTPS traffic to port 8080. The proxy must allow WebSocket upgrades.
+Deploy `docker-compose.yml` from this repository, or run the image with a volume on `/var/lib/banc`, and send HTTPS traffic to port 8080. The proxy must allow WebSocket upgrades and pass the `X-Forwarded-Host` and `X-Forwarded-Proto` headers.
+
+Create the first admin through the `https://` address: the server refuses to learn a plain `http://` one. If the address changes later, set `BANC_DOMAIN` to the new domain and redeploy.
 
 ## On a plain VPS
 
@@ -31,4 +39,4 @@ Docker with Compose is enough. Caddy obtains the certificate.
 
 ## Updating
 
-Pull the new image and restart the service: **Redeploy** on Coolify, `docker compose pull && docker compose up -d` on a plain VPS.
+Redeploy the service on your platform, or run `docker compose pull && docker compose up -d` on a plain VPS.

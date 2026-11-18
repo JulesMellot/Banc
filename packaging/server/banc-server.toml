@@ -9,7 +9,8 @@
 data_dir = "/var/lib/banc"
 
 # Address of the server as workstations and admins see it. Written into
-# invitation links.
+# invitation links. Without it, the server learns it from the request that
+# creates the first admin.
 public_url = "https://banc.mycompany.com"
 
 [http]

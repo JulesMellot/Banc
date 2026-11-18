@@ -75,7 +75,7 @@ Every change (admin created, admin key set, invitation created or revoked, machi
 
 ## First start
 
-1. Start the server. With no admin, it writes `data_dir/setup-token` (mode 0600) and logs the file path, never the token.
+1. Start the server. Without `public_url` in its configuration, it learns its address at step 2, from the HTTPS request of the first admin. With no admin, it writes `data_dir/setup-token` (mode 0600) and logs the file path, never the token.
 2. Open the web admin, enter the token, choose a name and a password (12 characters at least). The file is deleted.
 3. Register the admin key from the Banc window ("Clé d'administration", see `docs/workstation.md`). Until then the web admin refuses to create invitations.
 

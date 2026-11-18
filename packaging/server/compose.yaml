@@ -1,5 +1,5 @@
-# Banc server on a plain VPS, with Caddy for HTTPS. On Coolify, use
-# coolify.yaml instead. Settings are in `.env` (see `.env.example`).
+# Banc server on a plain VPS, with Caddy for HTTPS. On Coolify or Dokploy, use
+# docker-compose.yml at the root. Settings are in `.env` (see `.env.example`).
 # Exposed: TCP 80 and 443 (Caddy), UDP 443 (iroh). Nothing else.
 name: banc
 

@@ -62,23 +62,27 @@ wait_for_info
 key() { sed -n 's/.*"endpoint_id":"\([^"]*\)".*/\1/p'; }
 [ "$(echo "$first" | key)" = "$(info | key)" ] || fail "the server key changed on restart"
 
-# Behind a hosting platform: the image alone, one HTTP port, only the domain.
-docker compose -f "$here/coolify.yaml" config -q
+# Behind a hosting platform: the image alone, one HTTP port, no setting.
+docker compose -f "$here/../../docker-compose.yml" config -q
 docker run -d --name "$alone" --read-only --tmpfs /run/banc:uid=10001,gid=10001,mode=0700 \
-  -v /var/lib/banc -e BANC_DOMAIN=https://banc.example.com/ \
-  -p 127.0.0.1:18080:8080 "$BANC_IMAGE" >/dev/null
+  -v /var/lib/banc -p 127.0.0.1:18080:8080 "$BANC_IMAGE" >/dev/null
 tries=0
 until [ "$(docker inspect -f '{{.State.Health.Status}}' "$alone")" = healthy ]; do
   tries=$((tries + 1))
   [ "$tries" -lt 60 ] || fail "the image alone never becomes healthy"
   sleep 1
 done
-alone_info=$(curl -fsS --max-time 5 http://127.0.0.1:18080/api/v1/info)
-echo "$alone_info" | grep -q '"relay_url":"https://banc.example.com"' ||
-  fail "relay URL of the image alone: $alone_info"
-echo "$alone_info" | grep -q '"direct_addrs":\[\]' ||
-  fail "direct addresses of the image alone: $alone_info"
 status=$(curl -s --max-time 5 -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/generate_204)
 [ "$status" = 204 ] || fail "the HTTP port answers $status on /generate_204"
+
+# The first admin, through the platform's HTTPS proxy, teaches it its address.
+token=$(docker exec "$alone" cat /var/lib/banc/setup-token)
+curl -fsS --max-time 20 -o /dev/null -H 'Content-Type: application/json' \
+  -H 'X-Forwarded-Host: banc.example.com' -H 'X-Forwarded-Proto: https' \
+  -d "{\"token\":\"$token\",\"name\":\"smoke\",\"password\":\"correct horse battery\"}" \
+  http://127.0.0.1:18080/api/v1/admin/setup || fail "first admin refused"
+alone_info=$(curl -fsS --max-time 5 http://127.0.0.1:18080/api/v1/info)
+echo "$alone_info" | grep -q '"relay_url":"https://banc.example.com"' ||
+  fail "address not learned: $alone_info"
 
 echo "server image: all checks passed"
