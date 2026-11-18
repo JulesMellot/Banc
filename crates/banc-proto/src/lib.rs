@@ -12,3 +12,11 @@ pub mod keys;
 pub mod local;
 pub mod machine;
 mod text;
+pub mod update;
+
+/// Version of the workstation programs: the one given by the release
+/// workflow, `0.0.0` for a development build.
+pub const VERSION: &str = match option_env!("BANC_VERSION") {
+    Some(version) => version,
+    None => env!("CARGO_PKG_VERSION"),
+};
