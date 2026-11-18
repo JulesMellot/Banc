@@ -8,7 +8,8 @@
     "shortDescription": "Les postes DaVinci Resolve de l'équipe, prêts à monter.",
     "windows": {
       "nsis": {
-        "installMode": "perMachine"
+        "installMode": "perMachine",
+        "installerHooks": "installer-hooks.nsh"
       }
     }
   }

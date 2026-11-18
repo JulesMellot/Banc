@@ -104,6 +104,21 @@ fn agent_binary() -> CommandResult<PathBuf> {
     }
 }
 
+/// Starts the tray icon right after an installation, without waiting for
+/// the next login. It exits by itself if one is already running.
+pub fn start_session() {
+    if cfg!(debug_assertions) {
+        return;
+    }
+    let Ok(exe) = std::env::current_exe() else {
+        return;
+    };
+    let session = exe.with_file_name(format!("banc-session{}", std::env::consts::EXE_SUFFIX));
+    if let Err(error) = std::process::Command::new(&session).spawn() {
+        tracing::warn!(session = %session.display(), "cannot start the tray icon: {error}");
+    }
+}
+
 /// The computer name, proposed as the machine name.
 #[tauri::command]
 pub fn hostname() -> String {

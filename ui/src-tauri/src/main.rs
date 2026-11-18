@@ -29,6 +29,7 @@ fn main() {
         .manage(links::Links::default())
         .setup(|app| {
             links::watch(app);
+            agent::start_session();
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
