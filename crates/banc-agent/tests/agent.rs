@@ -253,7 +253,7 @@ async fn enroll_connect_restart_revoke() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn connects_through_the_relay_on_the_http_port() {
     let server = Server::start_relay_only().await;
-    assert!(server.running.state.server_info.direct_addrs.is_empty());
+    assert!(server.running.state.server_info().direct_addrs.is_empty());
     let dir = tempfile::tempdir().unwrap();
     let agent = Agent::start(dir.path());
 

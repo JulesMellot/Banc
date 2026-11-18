@@ -147,8 +147,9 @@ struct InfoResponse<'a> {
 
 async fn info(State(state): State<Arc<AppState>>) -> AppResult<Response> {
     let setup_required = state.setup().is_some();
+    let server = state.server_info();
     let body = InfoResponse {
-        server: &state.server_info,
+        server: &server,
         setup_required,
     };
     Ok(Json(body).into_response())
@@ -206,7 +207,7 @@ async fn enroll_machine(
         machine_role: enrolled.machine_role,
         person_role: enrolled.person_role,
         admin_key: enrolled.admin_key,
-        server: state.server_info.clone(),
+        server: state.server_info(),
     }))
 }
 
@@ -261,11 +262,10 @@ fn session_token(headers: &HeaderMap) -> Option<Vec<u8>> {
 }
 
 fn session_cookie(state: &AppState, value: &str, max_age: i64) -> AppResult<HeaderValue> {
-    let secure = if state.public_url.starts_with("https://") {
-        "; Secure"
-    } else {
-        ""
-    };
+    let https = state
+        .public_url()
+        .is_some_and(|url| url.starts_with("https://"));
+    let secure = if https { "; Secure" } else { "" };
     let cookie = format!(
         "{SESSION_COOKIE}={value}; Path=/; HttpOnly; SameSite=Strict; Max-Age={max_age}{secure}"
     );
@@ -306,6 +306,40 @@ async fn blocking<T: Send + 'static>(work: impl FnOnce() -> T + Send + 'static) 
         .map_err(|e| ApiError::internal(&e))
 }
 
+/// The address the browser used to reach the server, as the proxy in front
+/// reports it. `None` for anything but HTTPS, or `localhost` in development.
+fn detect_public_url(headers: &HeaderMap) -> Option<String> {
+    let first = |name: &str| {
+        headers
+            .get(name)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.split(',').next())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+    };
+    let host = first("x-forwarded-host").or_else(|| first("host"))?;
+    let scheme = first("x-forwarded-proto").unwrap_or("http");
+    banc_proto::invite::normalize_server(&format!("{scheme}://{host}")).ok()
+}
+
+/// Without a configured address, the server keeps the one the admin used.
+/// Only called once the request has proved it comes from an admin.
+fn remember_public_url(state: &AppState, headers: &HeaderMap) -> AppResult<()> {
+    if state.public_url().is_some() {
+        return Ok(());
+    }
+    let url = detect_public_url(headers).ok_or_else(|| {
+        ApiError::bad_request(
+            "public_url_unknown",
+            "open the server through its https:// address",
+        )
+    })?;
+    store::set_public_url(&state.db(), &url, state.now())?;
+    tracing::info!(url, "public address learned");
+    state.adopt_public_url(url);
+    Ok(())
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SetupRequest {
@@ -318,6 +352,7 @@ struct SetupRequest {
 /// start.
 async fn setup(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Body(request): Body<SetupRequest>,
 ) -> AppResult<Response> {
     let token_ok = |setup: &Option<crate::state::SetupToken>| {
@@ -351,6 +386,7 @@ async fn setup(
             "invalid setup token",
         ));
     }
+    remember_public_url(&state, &headers)?;
     let id = {
         let db = state.db();
         if store::admin_count(&db)? > 0 {
@@ -384,6 +420,7 @@ struct LoginRequest {
 
 async fn login(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Body(request): Body<LoginRequest>,
 ) -> AppResult<Response> {
     let found = store::admin_by_name(&state.db(), request.name.trim())?;
@@ -406,6 +443,9 @@ async fn login(
         ));
     };
     tracing::info!(admin = admin.id, "admin logged in");
+    if let Err(error) = remember_public_url(&state, &headers) {
+        tracing::warn!("public address not learned at login: {}", error.message);
+    }
     let cookie = open_session(&state, admin.id)?;
     Ok(([(SET_COOKIE, cookie)], Json(admin)).into_response())
 }
@@ -517,6 +557,13 @@ async fn create_invite(
     Body(request): Body<InviteRequest>,
 ) -> AppResult<Json<InviteCreated>> {
     let user_name = clean_admin_name(&request.user_name)?;
+    let server = state.public_url().ok_or_else(|| {
+        ApiError::new(
+            StatusCode::CONFLICT,
+            "public_url_unknown",
+            "open the server through its https:// address",
+        )
+    })?;
     let db = state.db();
     let admin_key = store::admin_key(&db)?.ok_or_else(|| {
         ApiError::new(
@@ -537,7 +584,7 @@ async fn create_invite(
     let row = store::create_invite(&db, &new, state.now())?;
     tracing::info!(admin = admin.id, invite = row.id, "invitation created");
     let invite = Invite {
-        server: state.public_url.clone(),
+        server,
         token,
         fingerprint: Fingerprint::of(&admin_key),
     };
@@ -753,6 +800,47 @@ mod tests {
         headers.insert(COOKIE, HeaderValue::from_static("banc_session=***"));
         assert_eq!(session_token(&headers), None);
         assert_eq!(session_token(&HeaderMap::new()), None);
+    }
+
+    #[test]
+    fn public_address_from_the_proxy() {
+        let headers = |pairs: &[(&'static str, &'static str)]| {
+            let mut map = HeaderMap::new();
+            for (name, value) in pairs {
+                map.insert(*name, HeaderValue::from_static(value));
+            }
+            map
+        };
+        let behind_proxy = headers(&[
+            ("host", "banc:8080"),
+            ("x-forwarded-host", "banc.example.com"),
+            ("x-forwarded-proto", "https"),
+        ]);
+        assert_eq!(
+            detect_public_url(&behind_proxy).as_deref(),
+            Some("https://banc.example.com")
+        );
+        let chain = headers(&[
+            ("host", "banc.example.com"),
+            ("x-forwarded-proto", "https, http"),
+        ]);
+        assert_eq!(
+            detect_public_url(&chain).as_deref(),
+            Some("https://banc.example.com")
+        );
+        let local = headers(&[("host", "localhost:8080")]);
+        assert_eq!(
+            detect_public_url(&local).as_deref(),
+            Some("http://localhost:8080")
+        );
+        // Plain HTTP on a real address would put an insecure link in invitations.
+        for refused in [
+            headers(&[("host", "banc.example.com")]),
+            headers(&[("host", "203.0.113.5:8080"), ("x-forwarded-proto", "http")]),
+            headers(&[("x-forwarded-proto", "https")]),
+        ] {
+            assert_eq!(detect_public_url(&refused), None);
+        }
     }
 
     #[test]

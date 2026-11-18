@@ -53,17 +53,29 @@ pub async fn start(config: &Config, clock: Clock) -> anyhow::Result<Running> {
         None
     };
 
+    // The configuration wins over an address learned earlier.
+    let public_url = match &config.public_url {
+        Some(url) => Some(url.clone()),
+        None => store::public_url(&conn)?,
+    };
+    let relay_follows_public_url = config.relay.enabled && config.relay.url.is_none();
+    let relay_url = config.relay_url().or_else(|| {
+        relay_follows_public_url
+            .then(|| public_url.clone())
+            .flatten()
+    });
     let server_info = ServerInfo {
         version: VERSION.to_owned(),
         endpoint_id,
-        relay_url: config.relay_url(),
+        relay_url,
         direct_addrs: config.iroh.public_addrs.clone(),
     };
     let state = Arc::new(AppState::new(
         conn,
         clock,
-        config.public_url.clone(),
+        public_url,
         server_info,
+        relay_follows_public_url,
         config.http.admin_ui.clone(),
     ));
     prepare_setup(&state, &config.data_dir)?;
@@ -217,7 +229,7 @@ fn prepare_setup(state: &AppState, data_dir: &Path) -> anyhow::Result<()> {
     });
     tracing::warn!(
         file = %file.display(),
-        url = %state.public_url,
+        url = state.public_url().as_deref().unwrap_or("not known yet"),
         "no admin yet: open the web admin and enter the token from this file"
     );
     Ok(())

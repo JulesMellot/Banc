@@ -22,8 +22,10 @@ pub struct Config {
     pub data_dir: PathBuf,
     /// Address at which workstations and admins reach the server, written
     /// into invitation links. `https://`, or `http://localhost` in
-    /// development.
-    pub public_url: String,
+    /// development. When absent, the server learns it from the request that
+    /// creates the first admin.
+    #[serde(default)]
+    pub public_url: Option<String>,
     #[serde(default)]
     pub http: HttpConfig,
     #[serde(default)]
@@ -176,7 +178,11 @@ impl Config {
         if matches!(&config.logs.dir, Some(dir) if dir.as_os_str().is_empty()) {
             return Err(ConfigError::Invalid("logs.dir is empty"));
         }
-        config.public_url = normalize_server(&config.public_url)
+        config.public_url = config
+            .public_url
+            .as_deref()
+            .map(normalize_server)
+            .transpose()
             .map_err(|_| ConfigError::Invalid("public_url must be an https:// address"))?;
         if let Some(url) = &config.relay.url {
             let url = normalize_server(url)
@@ -200,14 +206,13 @@ impl Config {
         self.data_dir.join(SERVER_KEY_FILE)
     }
 
-    /// Public URL of the relay, `None` when it is disabled.
+    /// Public URL of the relay, `None` when it is disabled or when the
+    /// public address is not known yet.
     pub fn relay_url(&self) -> Option<String> {
-        self.relay.enabled.then(|| {
-            self.relay
-                .url
-                .clone()
-                .unwrap_or_else(|| self.public_url.clone())
-        })
+        if !self.relay.enabled {
+            return None;
+        }
+        self.relay.url.clone().or_else(|| self.public_url.clone())
     }
 }
 
@@ -226,7 +231,10 @@ mod tests {
     fn minimal_config() {
         let config = parse(MINIMAL).unwrap();
         assert_eq!(config.data_dir, PathBuf::from("/var/lib/banc"));
-        assert_eq!(config.public_url, "https://banc.example.com");
+        assert_eq!(
+            config.public_url.as_deref(),
+            Some("https://banc.example.com")
+        );
         assert_eq!(config.logs, LogsConfig::default());
         assert_eq!(config.http, HttpConfig::default());
         assert_eq!(config.iroh, IrohConfig::default());
@@ -290,13 +298,15 @@ mod tests {
             Err(ConfigError::Invalid(_))
         ));
         assert_eq!(
-            with_url("http://localhost:8080/").unwrap().public_url,
-            "http://localhost:8080"
+            with_url("http://localhost:8080/")
+                .unwrap()
+                .public_url
+                .as_deref(),
+            Some("http://localhost:8080")
         );
-        assert!(matches!(
-            parse("data_dir = \"/d\""),
-            Err(ConfigError::Parse(_))
-        ));
+        let learned = parse("data_dir = \"/d\"").unwrap();
+        assert_eq!(learned.public_url, None);
+        assert_eq!(learned.relay_url(), None);
         let bad_relay = format!("{MINIMAL}\n[relay]\nurl = \"ftp://x\"");
         assert!(matches!(parse(&bad_relay), Err(ConfigError::Invalid(_))));
     }

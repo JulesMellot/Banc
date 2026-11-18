@@ -72,6 +72,12 @@ CREATE TABLE machines (
     revoked_at INTEGER
 );
 
+CREATE TABLE server_settings (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    public_url TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
 CREATE TABLE team (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     admin_public_key BLOB NOT NULL CHECK (length(admin_public_key) = 32),
