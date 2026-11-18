@@ -175,7 +175,7 @@ mod tests {
         assert_eq!(next_message(&before, &before), AgentMessage::Heartbeat);
         let after = Inventory {
             resolve: Some(ResolveInstall {
-                edition: ResolveEdition::Studio,
+                edition: Some(ResolveEdition::Studio),
                 version: "21.1".to_owned(),
             }),
             ..Inventory::default()

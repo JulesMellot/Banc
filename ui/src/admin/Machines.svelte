@@ -50,7 +50,8 @@
             </td>
             <td>
               {#if machine.resolve}
-                {machine.resolve.version} ({machine.resolve.edition})
+                {machine.resolve.version}
+                {#if machine.resolve.edition}({machine.resolve.edition}){/if}
               {:else}
                 {t('machines.resolve_missing')}
               {/if}

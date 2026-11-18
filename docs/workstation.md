@@ -63,8 +63,8 @@ The agent dials the server's iroh identifier with the relay and direct addresses
 
 Computer name and OS version are read once at start; the installed Resolve at every heartbeat (a few file reads):
 
-- macOS: `Info.plist` of `/Applications/DaVinci Resolve/DaVinci Resolve.app`, edition from the bundle's name;
-- Windows: the installed programs whose name starts with "DaVinci Resolve" (`DisplayVersion`);
+- macOS: `Info.plist` of `/Applications/DaVinci Resolve/DaVinci Resolve.app`;
+- Windows: the installed program named "DaVinci Resolve" or "DaVinci Resolve Studio" (`DisplayVersion`, whose `21.1.00014` means 21.1.0 build 14), not its companions such as the Control Panels;
 - Linux: the desktop entry and read-me of `/opt/resolve`.
 
 These sources come from section 11 of the plan and must be confirmed on real machines (step 5 of `docs/phase1-checklist.md`).

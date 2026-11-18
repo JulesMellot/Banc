@@ -131,7 +131,7 @@ fn inventory() -> InventorySource {
         hostname: "station-3".to_owned(),
         os_version: "Test OS 1".to_owned(),
         resolve: Some(ResolveInstall {
-            edition: ResolveEdition::Studio,
+            edition: Some(ResolveEdition::Studio),
             version: "21.1".to_owned(),
         }),
     })
