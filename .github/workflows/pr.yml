@@ -41,13 +41,35 @@ jobs:
       - run: docker build -f packaging/server/Dockerfile -t banc-server:latest .
       - run: packaging/server/smoke-test.sh
 
+  update:
+    name: Update (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/rust
+        with:
+          cache-key: update
+      - run: cargo xtask update-e2e --build
+      - name: Run a real update
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            target/debug/xtask.exe update-e2e --run
+          else
+            sudo target/debug/xtask update-e2e --run
+          fi
+
   # To be wired up once the product exists (see docs/ci.md):
   # end-to-end integration tests, server + depot + two agents.
 
   ready:
     name: PR ready
     if: always()
-    needs: [ci, platforms, idle, server-image]
+    needs: [ci, platforms, idle, server-image, update]
     runs-on: ubuntu-latest
     steps:
       - name: Check that all checks succeeded
