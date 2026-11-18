@@ -1,7 +1,7 @@
 //! Starts and stops the server's parts: HTTP API, iroh endpoint with the
 //! control channel, relay.
 
-use std::net::SocketAddr;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::path::Path;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -82,8 +82,7 @@ pub async fn start(config: &Config, clock: Clock) -> anyhow::Result<Running> {
     // Both lead to the same relay process.
     let relay_mode = match relay_addr {
         Some(addr) => {
-            let url =
-                RelayUrl::from_str(&format!("http://{addr}")).context("local relay address")?;
+            let url = RelayUrl::from_str(&local_relay_url(addr)).context("local relay address")?;
             RelayMode::Custom(RelayMap::from(url))
         }
         None => RelayMode::Disabled,
@@ -162,6 +161,17 @@ impl Running {
     }
 }
 
+/// Where the server reaches its own relay. A relay listening on every
+/// interface, as in a container, is reached over the loopback.
+fn local_relay_url(addr: SocketAddr) -> String {
+    let ip = match addr.ip() {
+        IpAddr::V4(ip) if ip.is_unspecified() => IpAddr::V4(Ipv4Addr::LOCALHOST),
+        IpAddr::V6(ip) if ip.is_unspecified() => IpAddr::V6(Ipv6Addr::LOCALHOST),
+        ip => ip,
+    };
+    format!("http://{}", SocketAddr::new(ip, addr.port()))
+}
+
 /// The server's iroh key, created at the first start. The VPS has no
 /// keychain: the key lives in a file readable by the server's account only.
 fn load_or_create_key(path: &Path) -> anyhow::Result<SecretKey> {
@@ -207,4 +217,21 @@ fn prepare_setup(state: &AppState, data_dir: &Path) -> anyhow::Result<()> {
         "no admin yet: open the web admin and enter the token from this file"
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn local_relay_address() {
+        for (listen, url) in [
+            ("127.0.0.1:3340", "http://127.0.0.1:3340"),
+            ("0.0.0.0:3340", "http://127.0.0.1:3340"),
+            ("[::]:3340", "http://[::1]:3340"),
+            ("10.0.0.2:3340", "http://10.0.0.2:3340"),
+        ] {
+            assert_eq!(local_relay_url(listen.parse().unwrap()), url, "{listen}");
+        }
+    }
 }
