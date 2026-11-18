@@ -1,7 +1,8 @@
 //! State shared by the HTTP API, the control channel and the relay.
 
+use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 use banc_proto::enroll::ServerInfo;
 use rusqlite::Connection;
@@ -35,6 +36,8 @@ pub struct AppState {
     pub connections: Registry,
     /// Built web admin, served on every path outside the API.
     pub admin_ui: Option<PathBuf>,
+    /// Local address of the relay, once it has started.
+    pub relay_addr: OnceLock<SocketAddr>,
 }
 
 /// The first-admin token and the file it was written to.
@@ -59,6 +62,7 @@ impl AppState {
             setup: Mutex::new(None),
             connections: Registry::default(),
             admin_ui,
+            relay_addr: OnceLock::new(),
         }
     }
 

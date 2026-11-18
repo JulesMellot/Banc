@@ -77,6 +77,10 @@ pub async fn start(config: &Config, clock: Clock) -> anyhow::Result<Running> {
         None => None,
     };
     let relay_addr = relay.as_ref().and_then(|relay| relay.http_addr());
+    if let Some(addr) = relay_addr {
+        // Set once, on a state nobody else holds yet.
+        let _ = state.relay_addr.set(addr);
+    }
 
     // The server reaches its own relay locally; agents use the public URL.
     // Both lead to the same relay process.

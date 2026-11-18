@@ -14,7 +14,7 @@ use axum::http::header::{CONTENT_TYPE, COOKIE, SET_COOKIE};
 use axum::http::request::Parts;
 use axum::http::{HeaderMap, HeaderValue, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{any, get, post};
 use axum::{Json, Router};
 use banc_proto::enroll::{self, EnrollRequest, EnrollResponse, ServerInfo};
 use banc_proto::invite::{Invite, InviteToken};
@@ -22,9 +22,9 @@ use banc_proto::keys::{AdminKeyRegistration, Fingerprint, PublicKey};
 use banc_proto::machine::{MachineRole, PersonRole};
 use serde::{Deserialize, Serialize};
 
-use crate::auth;
 use crate::state::AppState;
 use crate::store::{self, EnrollError, EnrollRefusal, StoreError};
+use crate::{auth, relay_proxy};
 
 /// Session cookie name.
 const SESSION_COOKIE: &str = "banc_session";
@@ -53,7 +53,10 @@ pub fn router(state: Arc<AppState>) -> Router {
         )
         .route("/api/v1/admin/invites/{id}/revoke", post(revoke_invite))
         .route("/api/v1/admin/machines", get(list_machines))
-        .route("/api/v1/admin/machines/{id}/revoke", post(revoke_machine));
+        .route("/api/v1/admin/machines/{id}/revoke", post(revoke_machine))
+        .route(relay_proxy::RELAY_PATH, any(relay))
+        .route(relay_proxy::PROBE_PATH, any(relay))
+        .route(relay_proxy::CAPTIVE_PORTAL_PATH, any(relay));
     api.fallback(fallback).with_state(state)
 }
 
@@ -606,6 +609,27 @@ async fn revoke_machine(
     state.connections.disconnect(&key);
     tracing::warn!(admin = admin.id, machine = id, "machine revoked");
     Ok(StatusCode::NO_CONTENT)
+}
+
+// ---------------------------------------------------------------- relay
+
+/// The relay's paths, on the same port as the API: a hosting platform gives
+/// the server one domain and one HTTP port.
+async fn relay(
+    State(state): State<Arc<AppState>>,
+    request: axum::extract::Request,
+) -> AppResult<Response> {
+    let Some(relay) = state.relay_addr.get().copied() else {
+        return Err(ApiError::not_found());
+    };
+    relay_proxy::forward(relay, request).await.map_err(|error| {
+        tracing::warn!("relay proxy: {error}");
+        ApiError::new(
+            StatusCode::BAD_GATEWAY,
+            "relay_unavailable",
+            "relay unavailable",
+        )
+    })
 }
 
 // ---------------------------------------------------------------- web admin

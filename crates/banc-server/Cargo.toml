@@ -19,6 +19,8 @@ banc-proto.workspace = true
 blake3.workspace = true
 data-encoding.workspace = true
 getrandom.workspace = true
+hyper = { workspace = true, features = ["client", "http1"] }
+hyper-util = { workspace = true, features = ["tokio"] }
 iroh.workspace = true
 iroh-relay.workspace = true
 banc-platform.workspace = true
@@ -29,7 +31,7 @@ rusqlite_migration.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true, features = ["rt-multi-thread", "net", "time", "fs", "sync"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "net", "time", "fs", "sync", "io-util"] }
 toml.workspace = true
 tracing.workspace = true
 
