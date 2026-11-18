@@ -8,8 +8,10 @@ use std::str::FromStr;
 
 use banc_proto::keys::PublicKey;
 use banc_proto::machine::{Inventory, MachineRole, Os, PersonRole, ResolveInstall};
+use banc_proto::manifest::{Manifest, Package, RequiredResolve, SignedManifest};
+use banc_proto::packages::WorkstationReport;
 use rusqlite::{params, Connection, OptionalExtension, Row};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// Lifetime of an invitation (section 2 of the plan).
 pub const INVITE_LIFETIME_SECS: i64 = 7 * 24 * 3600;
@@ -752,6 +754,258 @@ pub fn revoke_machine(
         &serde_json::json!({}),
     )?;
     Ok(public_key(&key))
+}
+
+// ---------------------------------------------------------------- packages
+
+/// A file of the package store.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PackageFileRow {
+    pub blake3: String,
+    pub name: String,
+    pub size: u64,
+    pub uploaded_at: i64,
+}
+
+/// SQLite integers are signed.
+fn to_integer(value: u64) -> i64 {
+    i64::try_from(value).unwrap_or(i64::MAX)
+}
+
+fn from_integer(value: i64) -> u64 {
+    u64::try_from(value).unwrap_or(0)
+}
+
+fn package_file_row(row: &Row<'_>) -> rusqlite::Result<PackageFileRow> {
+    Ok(PackageFileRow {
+        blake3: row.get(0)?,
+        name: row.get(1)?,
+        size: from_integer(row.get(2)?),
+        uploaded_at: row.get(3)?,
+    })
+}
+
+/// Records an uploaded file. The same content uploaded again keeps its row.
+pub fn add_package_file(
+    conn: &Connection,
+    file: &PackageFileRow,
+    admin_id: i64,
+) -> Result<PackageFileRow> {
+    conn.execute(
+        "INSERT INTO package_files (blake3, name, size, uploaded_by, uploaded_at)
+         VALUES (?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT (blake3) DO NOTHING",
+        params![
+            file.blake3,
+            file.name,
+            to_integer(file.size),
+            admin_id,
+            file.uploaded_at
+        ],
+    )?;
+    log_event(
+        conn,
+        file.uploaded_at,
+        Actor::Admin(admin_id),
+        "package_file_uploaded",
+        None,
+        &serde_json::json!({ "blake3": file.blake3, "name": file.name, "size": file.size }),
+    )?;
+    Ok(conn.query_row(
+        "SELECT blake3, name, size, uploaded_at FROM package_files WHERE blake3 = ?1",
+        [&file.blake3],
+        package_file_row,
+    )?)
+}
+
+pub fn list_package_files(conn: &Connection) -> Result<Vec<PackageFileRow>> {
+    let mut statement = conn.prepare(
+        "SELECT blake3, name, size, uploaded_at FROM package_files
+         ORDER BY uploaded_at DESC, name",
+    )?;
+    let rows = statement.query_map([], package_file_row)?;
+    Ok(rows.collect::<rusqlite::Result<_>>()?)
+}
+
+/// The size of a stored file, `None` if the store does not have it.
+pub fn package_file_size(conn: &Connection, blake3: &str) -> Result<Option<u64>> {
+    Ok(conn
+        .query_row(
+            "SELECT size FROM package_files WHERE blake3 = ?1",
+            [blake3],
+            |row| row.get(0).map(from_integer),
+        )
+        .optional()?)
+}
+
+/// What the admin is preparing: a manifest without its version.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ManifestDraft {
+    #[serde(default)]
+    pub resolve: Option<RequiredResolve>,
+    #[serde(default)]
+    pub packages: Vec<Package>,
+}
+
+impl ManifestDraft {
+    pub fn into_manifest(self, version: u64) -> Manifest {
+        Manifest {
+            version,
+            resolve: self.resolve,
+            packages: self.packages,
+        }
+    }
+}
+
+impl From<Manifest> for ManifestDraft {
+    fn from(manifest: Manifest) -> Self {
+        Self {
+            resolve: manifest.resolve,
+            packages: manifest.packages,
+        }
+    }
+}
+
+/// A manifest as the server keeps it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PublishedManifest {
+    pub version: u64,
+    pub signed: SignedManifest,
+    pub published_at: i64,
+}
+
+/// The manifest that applies, `None` before the first publication.
+pub fn latest_manifest(conn: &Connection) -> Result<Option<PublishedManifest>> {
+    let row: Option<(i64, String, String, i64)> = conn
+        .query_row(
+            "SELECT version, payload, signature, published_at FROM manifests
+             ORDER BY version DESC LIMIT 1",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )
+        .optional()?;
+    row.map(|(version, payload, signature, published_at)| {
+        Ok(PublishedManifest {
+            version: from_integer(version),
+            signed: SignedManifest {
+                payload,
+                signature: serde_json::from_str(&signature)?,
+            },
+            published_at,
+        })
+    })
+    .transpose()
+}
+
+/// Records a signed manifest, checked by the caller. The draft it came from
+/// is finished.
+pub fn publish_manifest(
+    conn: &mut Connection,
+    version: u64,
+    signed: &SignedManifest,
+    admin_id: i64,
+    now: i64,
+) -> Result<()> {
+    let tx = conn.transaction()?;
+    tx.execute(
+        "INSERT INTO manifests (version, payload, signature, published_by, published_at)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![
+            to_integer(version),
+            signed.payload,
+            serde_json::to_string(&signed.signature)?,
+            admin_id,
+            now
+        ],
+    )?;
+    tx.execute("DELETE FROM manifest_draft", [])?;
+    log_event(
+        &tx,
+        now,
+        Actor::Admin(admin_id),
+        "manifest_published",
+        None,
+        &serde_json::json!({ "version": version }),
+    )?;
+    tx.commit()?;
+    Ok(())
+}
+
+pub fn manifest_draft(conn: &Connection) -> Result<Option<ManifestDraft>> {
+    let content: Option<String> = conn
+        .query_row("SELECT content FROM manifest_draft", [], |row| row.get(0))
+        .optional()?;
+    Ok(content
+        .map(|content| serde_json::from_str(&content))
+        .transpose()?)
+}
+
+pub fn save_manifest_draft(
+    conn: &Connection,
+    draft: &ManifestDraft,
+    admin_id: i64,
+    now: i64,
+) -> Result<()> {
+    conn.execute(
+        "INSERT INTO manifest_draft (id, content, updated_by, updated_at)
+         VALUES (1, ?1, ?2, ?3)
+         ON CONFLICT (id) DO UPDATE SET content = ?1, updated_by = ?2, updated_at = ?3",
+        params![serde_json::to_string(draft)?, admin_id, now],
+    )?;
+    Ok(())
+}
+
+/// A workstation's latest report.
+pub fn record_packages(
+    conn: &Connection,
+    machine_id: i64,
+    report: &WorkstationReport,
+    now: i64,
+) -> Result<()> {
+    conn.execute(
+        "INSERT INTO machine_packages (machine_id, report, reported_at) VALUES (?1, ?2, ?3)
+         ON CONFLICT (machine_id) DO UPDATE SET report = ?2, reported_at = ?3",
+        params![machine_id, serde_json::to_string(report)?, now],
+    )?;
+    conn.execute(
+        "UPDATE machines SET last_seen_at = ?2 WHERE id = ?1",
+        params![machine_id, now],
+    )?;
+    Ok(())
+}
+
+/// One line of the machines-by-packages grid.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct MachinePackages {
+    pub machine_id: i64,
+    pub reported_at: i64,
+    pub report: WorkstationReport,
+}
+
+pub fn machine_packages(conn: &Connection) -> Result<Vec<MachinePackages>> {
+    let mut statement = conn.prepare(
+        "SELECT p.machine_id, p.reported_at, p.report
+         FROM machine_packages p JOIN machines m ON m.id = p.machine_id
+         WHERE m.revoked_at IS NULL
+         ORDER BY p.machine_id",
+    )?;
+    let rows = statement.query_map([], |row| {
+        Ok((
+            row.get::<_, i64>(0)?,
+            row.get::<_, i64>(1)?,
+            row.get::<_, String>(2)?,
+        ))
+    })?;
+    rows.map(|row| {
+        let (machine_id, reported_at, report) = row?;
+        Ok(MachinePackages {
+            machine_id,
+            reported_at,
+            report: serde_json::from_str(&report)?,
+        })
+    })
+    .collect()
 }
 
 // ---------------------------------------------------------------- helpers

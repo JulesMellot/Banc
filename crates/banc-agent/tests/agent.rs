@@ -6,17 +6,26 @@
 
 #![cfg(test)]
 
+use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use banc_agent::{Config, InventorySource};
+use banc_agent::install::{Fonts, Places};
+use banc_agent::{Config, InventorySource, ResolveOpen};
+use banc_platform::paths::ResolveDirs;
 use banc_platform::secrets::SecretStore;
 use banc_proto::control;
 use banc_proto::invite::{Invite, InviteToken};
 use banc_proto::keys::{Fingerprint, SecretKey};
 use banc_proto::local::{Connection, InviteInput, Request, Response};
-use banc_proto::machine::{Inventory, MachineRole, PersonRole, ResolveEdition, ResolveInstall};
+use banc_proto::machine::{Inventory, MachineRole, Os, PersonRole, ResolveEdition, ResolveInstall};
+use banc_proto::manifest::{
+    Manifest, Package, PackageBuild, PackageFile, PackageKind, Place, RequiredResolve,
+    SignedManifest,
+};
+use banc_proto::packages::{PackageState, WorkstationReport};
 use banc_server::config::Config as ServerConfig;
 use banc_server::server::{self, Running};
 use banc_server::store;
@@ -137,14 +146,34 @@ fn inventory() -> InventorySource {
     })
 }
 
+fn places(dir: &Path) -> Places {
+    let root = dir.join("machine");
+    Places {
+        resolve: ResolveDirs {
+            ofx: root.join("ofx"),
+            lut: root.join("lut"),
+            fusion_templates: root.join("templates"),
+            scripts: root.join("scripts"),
+        },
+        fonts: Fonts::Folder(root.join("fonts")),
+    }
+}
+
 impl Agent {
     fn start(dir: &Path) -> Self {
+        Self::start_with(dir, Arc::new(|| false))
+    }
+
+    fn start_with(dir: &Path, resolve_open: ResolveOpen) -> Self {
         let socket = banc_platform::local::endpoint_in(dir, "agent");
         let config = Config {
             state_dir: dir.join("state"),
             secrets: SecretStore::in_dir(dir.join("state/secrets")),
             socket: socket.clone(),
             inventory: inventory(),
+            places: places(dir),
+            resolve_open,
+            package_retry: Duration::from_millis(200),
         };
         let (stop, stopped) = oneshot::channel::<()>();
         let task = tokio::spawn(banc_agent::run(config, async {
@@ -404,4 +433,387 @@ async fn enrollment_refusals_leave_nothing_behind() {
 
     agent.stop().await;
     server.running.shutdown().await.unwrap();
+}
+
+// ---------------------------------------------------------------- phase 2
+
+fn this_os() -> Os {
+    banc_platform::machine::OS.parse().unwrap()
+}
+
+/// A zip archive, as an admin would upload it.
+fn archive(entries: &[(&str, &[u8])]) -> Vec<u8> {
+    let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    for (name, content) in entries {
+        zip.start_file(*name, zip::write::SimpleFileOptions::default())
+            .unwrap();
+        zip.write_all(content).unwrap();
+    }
+    zip.finish().unwrap().into_inner()
+}
+
+impl Server {
+    /// Puts a file in the package store.
+    fn store_file(&self, name: &str, content: &[u8]) -> PackageFile {
+        let blake3 = blake3::hash(content).to_hex().to_string();
+        let dir = &self.running.state.packages_dir;
+        std::fs::create_dir_all(dir).unwrap();
+        std::fs::write(dir.join(&blake3), content).unwrap();
+        let row = store::PackageFileRow {
+            blake3: blake3.clone(),
+            name: name.to_owned(),
+            size: content.len() as u64,
+            uploaded_at: NOW,
+        };
+        store::add_package_file(&self.running.state.db(), &row, 1).unwrap();
+        PackageFile {
+            blake3,
+            size: content.len() as u64,
+            name: name.to_owned(),
+        }
+    }
+
+    /// Signs and publishes a manifest, as the admin's application does.
+    fn publish(&self, version: u64, resolve: Option<&str>, packages: Vec<Package>) {
+        let manifest = Manifest {
+            version,
+            resolve: resolve.map(|version| RequiredResolve {
+                version: version.to_owned(),
+            }),
+            packages,
+        };
+        let signed = SignedManifest::sign(&self.admin_key, &manifest).unwrap();
+        store::publish_manifest(&mut self.running.state.db(), version, &signed, 1, NOW).unwrap();
+        self.running.state.manifest_version.send_replace(version);
+    }
+
+    fn report(&self) -> Option<WorkstationReport> {
+        store::machine_packages(&self.running.state.db())
+            .unwrap()
+            .into_iter()
+            .next()
+            .map(|line| line.report)
+    }
+
+    async fn wait_report(&self, what: &str, done: impl Fn(&WorkstationReport) -> bool) {
+        for _ in 0..400 {
+            if self.report().is_some_and(|report| done(&report)) {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        panic!("never happened: {what}, last report: {:?}", self.report());
+    }
+}
+
+fn package(id: &str, kind: PackageKind, place: Option<Place>, file: PackageFile) -> Package {
+    Package {
+        id: id.to_owned(),
+        version: "1.0".to_owned(),
+        required: true,
+        builds: vec![PackageBuild {
+            os: this_os(),
+            arch: None,
+            kind,
+            file: Some(file),
+            place,
+            args: Vec::new(),
+            instructions: None,
+        }],
+    }
+}
+
+fn state_of(report: &WorkstationReport, id: &str) -> Option<PackageState> {
+    report
+        .packages
+        .iter()
+        .find(|package| package.id == id)
+        .map(|package| package.state)
+}
+
+fn all_installed(report: &WorkstationReport, version: u64) -> bool {
+    report.manifest_version == Some(version)
+        && report
+            .packages
+            .iter()
+            .all(|package| package.state == PackageState::Installed)
+}
+
+/// An enrolled and connected agent.
+async fn joined(server: &Server, dir: &Path, resolve_open: ResolveOpen) -> Agent {
+    let agent = Agent::start_with(dir, resolve_open);
+    let answer = agent.ask(&enroll_link(&server.invite(9))).await;
+    assert!(matches!(answer, Response::Status(_)), "{answer:?}");
+    agent.wait_connection(Connection::Connected).await;
+    agent
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_signed_manifest_installs_plugin_font_lut_and_preset() {
+    let server = Server::start().await;
+    let dir = tempfile::tempdir().unwrap();
+    let agent = joined(&server, dir.path(), Arc::new(|| false)).await;
+    let machine = dir.path().join("machine");
+
+    let plugin = archive(&[("Glow.ofx.bundle/Contents/Info.plist", b"plist")]);
+    let plugin = server.store_file("glow.zip", &plugin);
+    let font = server.store_file("Inter.ttf", b"font");
+    let lut = server.store_file("Team.cube", b"lut");
+    let preset = server.store_file("Lower third.setting", b"preset");
+    server.publish(
+        1,
+        None,
+        vec![
+            package("glow", PackageKind::Copy, Some(Place::Ofx), plugin),
+            package("inter", PackageKind::Font, None, font),
+            package("team-lut", PackageKind::Copy, Some(Place::Lut), lut),
+            package(
+                "lower-third",
+                PackageKind::Copy,
+                Some(Place::FusionTemplates),
+                preset,
+            ),
+        ],
+    );
+
+    server
+        .wait_report("everything installed", |report| {
+            report.packages.len() == 4 && all_installed(report, 1)
+        })
+        .await;
+    assert!(machine
+        .join("ofx/Glow.ofx.bundle/Contents/Info.plist")
+        .exists());
+    assert_eq!(
+        std::fs::read(machine.join("fonts/Inter.ttf")).unwrap(),
+        b"font"
+    );
+    assert!(machine.join("lut/Team.cube").exists());
+    assert!(machine.join("templates/Lower third.setting").exists());
+
+    // The window sees the same state.
+    let Response::Status(status) = agent.ask(&Request::Status).await else {
+        panic!("status expected");
+    };
+    assert_eq!(status.packages.unwrap().packages.len(), 4);
+
+    // A package dropped from the manifest goes away, the others stay.
+    let kept = store::latest_manifest(&server.running.state.db())
+        .unwrap()
+        .unwrap();
+    let kept: Manifest = serde_json::from_str(&kept.signed.payload).unwrap();
+    let kept = kept
+        .packages
+        .into_iter()
+        .filter(|package| package.id != "glow")
+        .collect();
+    server.publish(2, None, kept);
+    server
+        .wait_report("the plugin removed", |report| {
+            report.packages.len() == 3 && all_installed(report, 2)
+        })
+        .await;
+    for _ in 0..100 {
+        if !machine.join("ofx/Glow.ofx.bundle").exists() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(!machine.join("ofx/Glow.ofx.bundle").exists());
+    assert!(machine.join("fonts/Inter.ttf").exists());
+    agent.stop().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_manifest_changed_in_the_server_database_is_refused() {
+    let server = Server::start().await;
+    let dir = tempfile::tempdir().unwrap();
+    let agent = joined(&server, dir.path(), Arc::new(|| false)).await;
+    let machine = dir.path().join("machine");
+
+    let good = server.store_file("Good.cube", b"good");
+    server.publish(
+        1,
+        None,
+        vec![package("good", PackageKind::Copy, Some(Place::Lut), good)],
+    );
+    server
+        .wait_report("the first manifest", |report| {
+            report.packages.len() == 1 && all_installed(report, 1)
+        })
+        .await;
+
+    // Someone with access to the server adds a package to the manifest.
+    let evil = server.store_file("Evil.cube", b"evil");
+    {
+        let db = server.running.state.db();
+        let latest = store::latest_manifest(&db).unwrap().unwrap();
+        let mut manifest: Manifest = serde_json::from_str(&latest.signed.payload).unwrap();
+        manifest
+            .packages
+            .push(package("evil", PackageKind::Copy, Some(Place::Lut), evil));
+        manifest.version = 2;
+        db.execute(
+            "INSERT INTO manifests (version, payload, signature, published_at)
+             VALUES (2, ?1, ?2, 0)",
+            (
+                serde_json::to_string(&manifest).unwrap(),
+                serde_json::to_string(&latest.signed.signature).unwrap(),
+            ),
+        )
+        .unwrap();
+    }
+    server.running.state.manifest_version.send_replace(2);
+
+    server
+        .wait_report("the refusal", |report| report.refused.is_some())
+        .await;
+    let report = server.report().unwrap();
+    assert_eq!(
+        report.manifest_version,
+        Some(1),
+        "the good one still applies"
+    );
+    assert_eq!(state_of(&report, "evil"), None);
+    assert!(machine.join("lut/Good.cube").exists());
+    assert!(!machine.join("lut/Evil.cube").exists());
+    agent.stop().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_file_that_does_not_match_its_hash_is_refused() {
+    let server = Server::start().await;
+    let dir = tempfile::tempdir().unwrap();
+    let agent = joined(&server, dir.path(), Arc::new(|| false)).await;
+    let machine = dir.path().join("machine");
+
+    let lut = server.store_file("Team.cube", b"the real lut");
+    // The file is replaced on the server, with the same size.
+    std::fs::write(
+        server.running.state.packages_dir.join(&lut.blake3),
+        b"a forged lut",
+    )
+    .unwrap();
+    server.publish(
+        1,
+        None,
+        vec![package(
+            "team-lut",
+            PackageKind::Copy,
+            Some(Place::Lut),
+            lut,
+        )],
+    );
+
+    server
+        .wait_report("the failure", |report| {
+            state_of(report, "team-lut") == Some(PackageState::Failed)
+        })
+        .await;
+    assert!(!machine.join("lut/Team.cube").exists());
+    let downloads = dir.path().join("state/downloads");
+    assert_eq!(std::fs::read_dir(downloads).unwrap().count(), 0, "deleted");
+    agent.stop().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn nothing_is_installed_while_resolve_is_open() {
+    let server = Server::start().await;
+    let dir = tempfile::tempdir().unwrap();
+    let open = Arc::new(AtomicBool::new(true));
+    let flag = open.clone();
+    let agent = joined(
+        &server,
+        dir.path(),
+        Arc::new(move || flag.load(Ordering::SeqCst)),
+    )
+    .await;
+    let installed = dir.path().join("machine/lut/Team.cube");
+
+    let lut = server.store_file("Team.cube", b"lut");
+    server.publish(
+        1,
+        Some("21.1"),
+        vec![package(
+            "team-lut",
+            PackageKind::Copy,
+            Some(Place::Lut),
+            lut,
+        )],
+    );
+    server
+        .wait_report("the package waiting", |report| {
+            state_of(report, "team-lut") == Some(PackageState::Pending)
+        })
+        .await;
+    tokio::time::sleep(Duration::from_millis(600)).await;
+    assert!(!installed.exists(), "Resolve is open");
+
+    open.store(false, Ordering::SeqCst);
+    server
+        .wait_report("the package installed", |report| {
+            state_of(report, "team-lut") == Some(PackageState::Installed)
+        })
+        .await;
+    assert!(installed.exists());
+    assert!(
+        server.report().unwrap().can_open_projects(),
+        "right version"
+    );
+    agent.stop().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_wrong_resolve_version_closes_projects() {
+    let server = Server::start().await;
+    let dir = tempfile::tempdir().unwrap();
+    let agent = joined(&server, dir.path(), Arc::new(|| false)).await;
+
+    server.publish(1, Some("22.0"), Vec::new());
+    server
+        .wait_report("the mismatch", |report| report.resolve_mismatch)
+        .await;
+    let report = server.report().unwrap();
+    assert!(!report.can_open_projects());
+    assert_eq!(report.resolve_required.as_deref(), Some("22.0"));
+    agent.stop().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_manual_package_waits_for_a_person() {
+    let server = Server::start().await;
+    let dir = tempfile::tempdir().unwrap();
+    let agent = joined(&server, dir.path(), Arc::new(|| false)).await;
+
+    let manual = Package {
+        id: "licence".to_owned(),
+        version: "1.0".to_owned(),
+        required: true,
+        builds: vec![PackageBuild {
+            os: this_os(),
+            arch: None,
+            kind: PackageKind::Manual,
+            file: None,
+            place: None,
+            args: Vec::new(),
+            instructions: Some("Ask the admin for the dongle.".to_owned()),
+        }],
+    };
+    server.publish(1, None, vec![manual]);
+    server
+        .wait_report("the instructions", |report| {
+            state_of(report, "licence") == Some(PackageState::Manual)
+        })
+        .await;
+
+    let confirm = Request::ConfirmManual {
+        id: "licence".to_owned(),
+    };
+    assert!(matches!(agent.ask(&confirm).await, Response::Status(_)));
+    server
+        .wait_report("the confirmation", |report| {
+            state_of(report, "licence") == Some(PackageState::Installed)
+        })
+        .await;
+    agent.stop().await;
 }

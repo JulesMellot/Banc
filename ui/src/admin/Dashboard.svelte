@@ -8,18 +8,26 @@
     type InviteCreated,
     type InviteRow,
     type Machine,
+    type MachinePackages,
+    type ManifestView,
     type NewInvite,
+    type StoredFile,
   } from '../lib/api';
   import { errorMessage, nowSeconds } from '../lib/format';
   import { t } from '../lib/i18n';
   import Invites from './Invites.svelte';
   import Machines from './Machines.svelte';
+  import PackageGrid from './PackageGrid.svelte';
+  import Packages from './Packages.svelte';
 
   let { onSessionExpired }: { onSessionExpired: () => void } = $props();
 
   let adminKey = $state<AdminKey | null>(null);
   let machines = $state<Machine[]>([]);
   let invites = $state<InviteRow[]>([]);
+  let manifest = $state<ManifestView | null>(null);
+  let files = $state<StoredFile[]>([]);
+  let grid = $state<MachinePackages[]>([]);
   let now = $state(nowSeconds());
   let error = $state('');
 
@@ -41,10 +49,13 @@
 
   async function refresh() {
     await attempt(async () => {
-      [adminKey, machines, invites] = await Promise.all([
+      [adminKey, machines, invites, manifest, files, grid] = await Promise.all([
         api.adminKey(),
         api.machines(),
         api.invites(),
+        api.manifest(),
+        api.packageFiles(),
+        api.packagesGrid(),
       ]);
       now = nowSeconds();
     });
@@ -90,6 +101,12 @@
 </section>
 
 <Machines {machines} {now} onRevoke={revokeMachine} onRefresh={refresh} />
+
+<PackageGrid {machines} {grid} manifest={manifest?.published?.manifest ?? null} />
+
+{#if manifest}
+  <Packages view={manifest} {files} {attempt} onChanged={refresh} />
+{/if}
 
 <Invites
   {invites}

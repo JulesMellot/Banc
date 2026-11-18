@@ -7,9 +7,9 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use anyhow::Context;
-use banc_proto::control;
 use banc_proto::enroll::ServerInfo;
 use banc_proto::keys::{PublicKey, SecretKey};
+use banc_proto::{control, packages as delivery};
 use iroh::endpoint::presets;
 use iroh::protocol::Router as IrohRouter;
 use iroh::{Endpoint, RelayMap, RelayMode, RelayUrl};
@@ -17,6 +17,7 @@ use iroh::{Endpoint, RelayMap, RelayMode, RelayUrl};
 use crate::auth;
 use crate::config::Config;
 use crate::control::ControlProtocol;
+use crate::packages::PackagesProtocol;
 use crate::state::{AppState, Clock, SetupToken};
 use crate::{api, db, relay, store};
 
@@ -77,6 +78,7 @@ pub async fn start(config: &Config, clock: Clock) -> anyhow::Result<Running> {
         server_info,
         relay_follows_public_url,
         config.http.admin_ui.clone(),
+        config.packages_dir(),
     ));
     prepare_setup(&state, &config.data_dir)?;
 
@@ -105,7 +107,7 @@ pub async fn start(config: &Config, clock: Clock) -> anyhow::Result<Running> {
     };
     let endpoint = Endpoint::builder(presets::Minimal)
         .secret_key(secret)
-        .alpns(vec![control::ALPN.to_vec()])
+        .alpns(vec![control::ALPN.to_vec(), delivery::ALPN.to_vec()])
         .relay_mode(relay_mode)
         .clear_ip_transports()
         .bind_addr(config.iroh.listen)
@@ -115,6 +117,7 @@ pub async fn start(config: &Config, clock: Clock) -> anyhow::Result<Running> {
         .context("starting the iroh endpoint")?;
     let iroh = IrohRouter::builder(endpoint)
         .accept(control::ALPN, ControlProtocol::new(state.clone()))
+        .accept(delivery::ALPN, PackagesProtocol::new(state.clone()))
         .spawn();
 
     let listener = tokio::net::TcpListener::bind(config.http.listen)

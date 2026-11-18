@@ -5,6 +5,7 @@
 //! per-OS variants in `linux`, `macos` and `windows` submodules.
 
 pub mod elevate;
+pub mod fonts;
 pub mod fs;
 pub mod local;
 pub mod logging;

@@ -9,15 +9,18 @@
 
 pub mod control;
 pub mod enroll;
+pub mod install;
 pub mod local;
 pub mod packages;
 pub mod state;
+pub mod sync;
 pub mod update;
 
 use std::future::Future;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::Duration;
 
 use anyhow::Context;
 use banc_platform::local::LocalListener;
@@ -26,14 +29,31 @@ use banc_proto::enroll::EnrollResponse;
 use banc_proto::keys::{Fingerprint, SecretKey};
 use banc_proto::local::{AgentStatus, Connection as ConnectionState, Enrollment};
 use banc_proto::machine::Inventory;
+use banc_proto::packages::WorkstationReport;
 use iroh::endpoint::presets;
 use iroh::{Endpoint, RelayMap, RelayMode, RelayUrl};
-use tokio::sync::watch;
+use tokio::sync::{watch, Notify};
 
+use crate::install::{Fonts, Places};
 use crate::state::{Enrolled, StateError};
 
 /// Reads the inventory. Replaced in tests.
 pub type InventorySource = Arc<dyn Fn() -> Inventory + Send + Sync>;
+
+/// Whether DaVinci Resolve is running. Replaced in tests.
+pub type ResolveOpen = Arc<dyn Fn() -> bool + Send + Sync>;
+
+/// How long unfinished packages wait before the next look: a package held
+/// back by an open Resolve goes in soon after Resolve closes.
+pub const PACKAGE_RETRY: Duration = Duration::from_secs(300);
+
+/// The folders of this machine that packages are installed to.
+pub fn system_places() -> Result<Places, banc_platform::paths::PathError> {
+    Ok(Places {
+        resolve: banc_platform::paths::resolve_dirs()?,
+        fonts: Fonts::System,
+    })
+}
 
 /// The machine's real inventory. The computer name and the OS version are
 /// read once; Resolve at every call, since it can be installed or updated
@@ -55,6 +75,11 @@ pub struct Config {
     /// Local endpoint for the interface.
     pub socket: PathBuf,
     pub inventory: InventorySource,
+    /// Where packages are installed.
+    pub places: Places,
+    pub resolve_open: ResolveOpen,
+    /// See [`PACKAGE_RETRY`].
+    pub package_retry: Duration,
 }
 
 /// State shared by the local endpoint and the connection to the server.
@@ -65,6 +90,14 @@ pub struct Shared {
     enrollment: watch::Sender<Option<(Enrolled, SecretKey)>>,
     connection: Mutex<ConnectionState>,
     enrolling: Mutex<bool>,
+    places: Places,
+    resolve_open: ResolveOpen,
+    package_retry: Duration,
+    /// Asks the package work to look at the manifest again.
+    package_wake: Notify,
+    /// Manual packages a person just confirmed.
+    confirmed: Mutex<Vec<String>>,
+    report: watch::Sender<Option<WorkstationReport>>,
 }
 
 /// Held during an enrollment.
@@ -91,6 +124,12 @@ impl Shared {
             enrollment: watch::Sender::new(enrolled),
             connection: Mutex::new(ConnectionState::Connecting),
             enrolling: Mutex::new(false),
+            places: config.places.clone(),
+            resolve_open: config.resolve_open.clone(),
+            package_retry: config.package_retry,
+            package_wake: Notify::new(),
+            confirmed: Mutex::new(Vec::new()),
+            report: watch::Sender::new(None),
         }
     }
 
@@ -129,7 +168,14 @@ impl Shared {
                 connection,
             }),
             inventory: self.inventory(),
+            packages: self.report.borrow().clone().map(Box::new),
         }
+    }
+
+    /// Records that a person followed a manual package's instructions.
+    pub fn confirm_manual(&self, id: String) {
+        lock(&self.confirmed).push(id);
+        self.package_wake.notify_one();
     }
 
     /// `None` if another enrollment is running.
@@ -206,6 +252,10 @@ pub async fn run(config: Config, shutdown: impl Future<Output = ()>) -> anyhow::
         };
         endpoint = Some(bound.clone());
         tokio::select! {
+            () = sync::run(&bound, &enrolled, &shared) => {
+                // Never ends by itself.
+                break Ok(());
+            }
             () = control::maintain(&bound, &enrolled, &shared) => {
                 // Revoked: nothing left to do until a new invitation.
                 tokio::select! {

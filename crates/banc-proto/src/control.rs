@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use crate::machine::Inventory;
+use crate::packages::WorkstationReport;
 
 /// iroh protocol identifier of the control channel.
 pub const ALPN: &[u8] = b"banc/control/1";
@@ -39,6 +40,11 @@ pub enum AgentMessage {
     Report {
         inventory: Inventory,
     },
+    /// Where the workstation stands against the manifest. Only sent to a
+    /// server that announced packages in its welcome.
+    Packages {
+        report: WorkstationReport,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -48,7 +54,14 @@ pub enum ServerMessage {
         machine_id: i64,
         /// Heartbeat interval asked by the server, in seconds.
         heartbeat_secs: u64,
+        /// The server delivers manifests. An older server does not say so,
+        /// and would close the connection on a package report.
+        #[serde(default)]
+        packages: bool,
     },
+    /// A new manifest is available. Only a notice: the agent fetches the
+    /// manifest and checks its signature.
+    ManifestPublished { version: u64 },
 }
 
 /// Close codes of the control connection.

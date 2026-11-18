@@ -1,5 +1,5 @@
 use std::fs::{File, OpenOptions};
-use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
 use std::path::Path;
 
 /// Mode 0600, set at creation: the file is never readable by others, even
@@ -22,6 +22,14 @@ pub(super) fn set_installed_mode(path: &Path, executable: bool) -> std::io::Resu
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))
 }
 
+pub(super) fn create_private_dir(path: &Path) -> std::io::Result<()> {
+    std::fs::DirBuilder::new().mode(0o700).create(path)
+}
+
+pub(super) fn symlink(target: &Path, link: &Path) -> std::io::Result<()> {
+    std::os::unix::fs::symlink(target, link)
+}
+
 #[cfg(test)]
 mod tests {
     use std::os::unix::fs::PermissionsExt;
@@ -33,6 +41,15 @@ mod tests {
         super::super::write_private(&path, b"x").unwrap();
         let mode = std::fs::metadata(&path).unwrap().permissions().mode();
         assert_eq!(mode & 0o777, 0o600);
+    }
+
+    #[test]
+    fn a_private_folder_is_closed_to_others() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("private");
+        super::super::create_private_dir(&dir).unwrap();
+        let mode = std::fs::metadata(&dir).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o700);
     }
 
     #[test]

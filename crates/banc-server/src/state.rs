@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex, MutexGuard, OnceLock, RwLock};
 
 use banc_proto::enroll::ServerInfo;
 use rusqlite::Connection;
+use tokio::sync::watch;
 
 use crate::control::Registry;
 
@@ -39,6 +40,10 @@ pub struct AppState {
     pub admin_ui: Option<PathBuf>,
     /// Local address of the relay, once it has started.
     pub relay_addr: OnceLock<SocketAddr>,
+    /// Where the content of the package files is kept.
+    pub packages_dir: PathBuf,
+    /// Version of the latest manifest: connected agents follow it.
+    pub manifest_version: watch::Sender<u64>,
 }
 
 struct Public {
@@ -60,7 +65,12 @@ impl AppState {
         server_info: ServerInfo,
         relay_follows_public_url: bool,
         admin_ui: Option<PathBuf>,
+        packages_dir: PathBuf,
     ) -> Self {
+        let latest = crate::store::latest_manifest(&db)
+            .ok()
+            .flatten()
+            .map_or(0, |manifest| manifest.version);
         Self {
             db: Mutex::new(db),
             clock,
@@ -73,6 +83,8 @@ impl AppState {
             connections: Registry::default(),
             admin_ui,
             relay_addr: OnceLock::new(),
+            packages_dir,
+            manifest_version: watch::Sender::new(latest),
         }
     }
 

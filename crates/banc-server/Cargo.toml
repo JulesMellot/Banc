@@ -18,6 +18,7 @@ axum.workspace = true
 banc-proto.workspace = true
 blake3.workspace = true
 data-encoding.workspace = true
+futures-util.workspace = true
 getrandom.workspace = true
 hyper = { workspace = true, features = ["client", "http1"] }
 hyper-util = { workspace = true, features = ["tokio"] }

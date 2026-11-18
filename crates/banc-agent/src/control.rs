@@ -9,10 +9,10 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use banc_proto::control::{self, close, AgentMessage, ServerMessage};
+use banc_proto::control::{self, close, AgentMessage, FrameError, ServerMessage};
 use banc_proto::local::Connection as ConnectionState;
 use banc_proto::machine::Inventory;
-use iroh::endpoint::{ConnectionError, Endpoint};
+use iroh::endpoint::{ConnectionError, Endpoint, RecvStream};
 use iroh::{EndpointAddr, RelayUrl};
 
 use crate::state::Enrolled;
@@ -96,14 +96,19 @@ async fn session(
         welcome = tokio::time::timeout(CONNECT_TIMEOUT, control::read_frame::<_, ServerMessage>(&mut recv)) => welcome,
         reason = connection.closed() => return Ok(end_of(&reason)),
     };
-    let heartbeat = match welcome {
+    let (heartbeat, delivers_packages) = match welcome {
         Ok(Ok(Some(ServerMessage::Welcome {
             heartbeat_secs,
             machine_id,
+            packages,
         }))) => {
             tracing::info!(machine = machine_id, "connected to the server");
-            Duration::from_secs(heartbeat_secs.clamp(10, 3600))
+            (
+                Duration::from_secs(heartbeat_secs.clamp(10, 3600)),
+                packages,
+            )
         }
+        Ok(Ok(Some(_))) => anyhow::bail!("welcome expected"),
         Ok(Ok(None)) => return Ok(end_of(&connection.closed().await)),
         Ok(Err(error)) => return Err(error.into()),
         Err(_) => anyhow::bail!("no welcome from the server"),
@@ -114,6 +119,12 @@ async fn session(
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     // The first tick is immediate: the hello already counts.
     ticker.tick().await;
+    // Connected: the manifest may have changed while the agent was away.
+    shared.package_wake.notify_one();
+    let mut reports = shared.report.subscribe();
+    reports.mark_changed();
+    let notices = listen(&mut recv, shared);
+    tokio::pin!(notices);
     loop {
         tokio::select! {
             _ = ticker.tick() => {
@@ -122,7 +133,30 @@ async fn session(
                 inventory = current;
                 control::write_frame(&mut send, &message).await?;
             }
+            changed = reports.changed(), if delivers_packages => {
+                changed?;
+                let report = reports.borrow_and_update().clone();
+                if let Some(report) = report {
+                    control::write_frame(&mut send, &AgentMessage::Packages { report }).await?;
+                }
+            }
+            () = &mut notices => return Ok(end_of(&connection.closed().await)),
             reason = connection.closed() => return Ok(end_of(&reason)),
+        }
+    }
+}
+
+/// Follows what the server announces, until its side of the stream ends. A
+/// message this version does not know is skipped.
+async fn listen(recv: &mut RecvStream, shared: &Shared) {
+    loop {
+        match control::read_frame::<_, ServerMessage>(recv).await {
+            Ok(Some(ServerMessage::ManifestPublished { version })) => {
+                tracing::info!(version, "a new manifest is available");
+                shared.package_wake.notify_one();
+            }
+            Ok(Some(_)) | Err(FrameError::Json(_)) => {}
+            Ok(None) | Err(_) => return,
         }
     }
 }

@@ -53,6 +53,7 @@ allow-wildcard-paths = true
 # one; remove it when iroh catches up (cargo deny warns about unused skips).
 skip = [
   { crate = "base64@0.22.1", reason = "iroh-relay (pem, tokio-rustls-acme)" },
+  { crate = "constant_time_eq@0.4.2", reason = "blake3, while zip needs 0.6 for its security fixes" },
   { crate = "cpufeatures@0.2.17", reason = "iroh (noq-proto, aes-gcm)" },
   { crate = "crypto-common@0.1.7", reason = "iroh (noq-proto, aes-gcm)" },
   { crate = "getrandom@0.2.17", reason = "iroh (ring)" },

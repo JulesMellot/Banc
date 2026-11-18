@@ -11,6 +11,8 @@ use serde::Deserialize;
 
 /// Name of the SQLite file in `data_dir`.
 const DATABASE_FILE: &str = "banc.sqlite";
+/// Folder of the package files in `data_dir`.
+const PACKAGES_DIR: &str = "packages";
 /// Name of the server's iroh key in `data_dir`.
 const SERVER_KEY_FILE: &str = "server.key";
 
@@ -200,6 +202,11 @@ impl Config {
 
     pub fn database_path(&self) -> PathBuf {
         self.data_dir.join(DATABASE_FILE)
+    }
+
+    /// Where the content of the package files is kept.
+    pub fn packages_dir(&self) -> PathBuf {
+        self.data_dir.join(PACKAGES_DIR)
     }
 
     pub fn server_key_path(&self) -> PathBuf {

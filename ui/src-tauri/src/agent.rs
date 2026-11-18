@@ -64,6 +64,12 @@ pub async fn enroll(
     status_of(ask(&Request::Enroll { invite, name }).await?)
 }
 
+/// A person followed the instructions of a manual package.
+#[tauri::command]
+pub async fn confirm_manual(id: String) -> CommandResult<AgentStatus> {
+    status_of(ask(&Request::ConfirmManual { id }).await?)
+}
+
 /// Installs and starts the agent service, after the OS has asked for the
 /// administrator password. The agent binary sits next to the application's.
 #[tauri::command]

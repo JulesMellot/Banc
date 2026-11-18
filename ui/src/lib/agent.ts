@@ -2,7 +2,7 @@
 // They return the agent's state or throw { code, message }.
 import { invoke } from '@tauri-apps/api/core';
 
-import type { MachineRole, PersonRole } from './api';
+import type { Manifest, MachineRole, PersonRole, WorkstationReport } from './api';
 
 export type ConnectionState = 'connecting' | 'connected' | 'revoked';
 
@@ -26,6 +26,7 @@ export interface AgentStatus {
   version: string;
   enrollment: Enrollment | null;
   inventory: Inventory;
+  packages?: WorkstationReport | null;
 }
 
 export interface LinkSummary {
@@ -71,6 +72,7 @@ export function commands(call: Invoke = invoke) {
       run<AgentStatus>('enroll', { link, name, server: null, key: null }),
     enrollWithKey: (server: string, key: string, name: string) =>
       run<AgentStatus>('enroll', { link: null, server, key, name }),
+    confirmManual: (id: string) => run<AgentStatus>('confirm_manual', { id }),
     installAgent: () => run<void>('install_agent'),
     hostname: () => run<string>('hostname'),
     readLink: (link: string) => run<LinkSummary>('read_link', { link }),
@@ -81,6 +83,10 @@ export function commands(call: Invoke = invoke) {
     adminKeyRestore: (code: string) => run<KeyInfo>('admin_key_restore', { code }),
     adminKeyRegister: (server: string, name: string, password: string, replace: boolean) =>
       run<KeyInfo>('admin_key_register', { server, name, password, replace }),
+    manifestPrepare: (server: string, name: string, password: string) =>
+      run<Manifest>('manifest_prepare', { server, name, password }),
+    manifestPublish: () => run<number>('manifest_publish'),
+    manifestCancel: () => run<void>('manifest_cancel'),
   };
 }
 

@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use super::{required, Env, PathError, Scope};
+use super::{required, Env, PathError, ResolveDirs, Scope};
 
 pub(super) fn log_dir(scope: Scope, env: Env<'_>) -> Result<PathBuf, PathError> {
     match scope {
@@ -29,6 +29,16 @@ pub(super) fn state_dir(scope: Scope, env: Env<'_>) -> Result<PathBuf, PathError
             Ok(data.join("banc"))
         }
     }
+}
+
+pub(super) fn resolve_dirs(_env: Env<'_>) -> Result<ResolveDirs, PathError> {
+    let resolve = PathBuf::from("/opt/resolve");
+    Ok(ResolveDirs {
+        ofx: PathBuf::from("/usr/OFX/Plugins"),
+        lut: resolve.join("LUT"),
+        fusion_templates: resolve.join("Fusion/Templates"),
+        scripts: resolve.join("Fusion/Scripts"),
+    })
 }
 
 #[cfg(test)]
@@ -72,6 +82,13 @@ mod tests {
             state_dir(Scope::User, &env).unwrap(),
             PathBuf::from("/data/banc")
         );
+    }
+
+    #[test]
+    fn resolve_folders() {
+        let dirs = resolve_dirs(&fake_env(&[])).unwrap();
+        assert_eq!(dirs.ofx, PathBuf::from("/usr/OFX/Plugins"));
+        assert_eq!(dirs.scripts, PathBuf::from("/opt/resolve/Fusion/Scripts"));
     }
 
     #[test]

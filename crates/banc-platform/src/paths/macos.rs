@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use super::{required, Env, PathError, Scope};
+use super::{required, Env, PathError, ResolveDirs, Scope};
 
 pub(super) fn log_dir(scope: Scope, env: Env<'_>) -> Result<PathBuf, PathError> {
     match scope {
@@ -16,6 +16,16 @@ pub(super) fn state_dir(scope: Scope, env: Env<'_>) -> Result<PathBuf, PathError
         Scope::System => Ok(PathBuf::from("/Library/Application Support/Banc")),
         Scope::User => Ok(required(env, "HOME")?.join("Library/Application Support/Banc")),
     }
+}
+
+pub(super) fn resolve_dirs(_env: Env<'_>) -> Result<ResolveDirs, PathError> {
+    let support = PathBuf::from("/Library/Application Support/Blackmagic Design/DaVinci Resolve");
+    Ok(ResolveDirs {
+        ofx: PathBuf::from("/Library/OFX/Plugins"),
+        lut: support.join("LUT"),
+        fusion_templates: support.join("Fusion/Templates"),
+        scripts: support.join("Fusion/Scripts"),
+    })
 }
 
 #[cfg(test)]
@@ -46,6 +56,16 @@ mod tests {
         assert_eq!(
             state_dir(Scope::User, &env).unwrap(),
             PathBuf::from("/Users/lea/Library/Application Support/Banc")
+        );
+    }
+
+    #[test]
+    fn resolve_folders() {
+        let dirs = resolve_dirs(&fake_env(&[])).unwrap();
+        assert_eq!(dirs.ofx, PathBuf::from("/Library/OFX/Plugins"));
+        assert_eq!(
+            dirs.lut,
+            PathBuf::from("/Library/Application Support/Blackmagic Design/DaVinci Resolve/LUT")
         );
     }
 

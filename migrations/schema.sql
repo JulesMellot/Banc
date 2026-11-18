@@ -50,6 +50,13 @@ CREATE TABLE invites (
     machine_id INTEGER REFERENCES machines (id) ON DELETE SET NULL
 );
 
+CREATE TABLE machine_packages (
+    machine_id INTEGER PRIMARY KEY REFERENCES machines (id) ON DELETE CASCADE,
+    -- JSON.
+    report TEXT NOT NULL,
+    reported_at INTEGER NOT NULL
+);
+
 CREATE TABLE machines (
     id INTEGER PRIMARY KEY,
     name TEXT NOT NULL,
@@ -71,6 +78,33 @@ CREATE TABLE machines (
     last_report TEXT,
     revoked_at INTEGER
 );
+
+CREATE TABLE manifest_draft (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    -- JSON.
+    content TEXT NOT NULL,
+    updated_by INTEGER REFERENCES admins (id) ON DELETE SET NULL,
+    updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE manifests (
+    version INTEGER PRIMARY KEY,
+    -- The exact bytes that were signed.
+    payload TEXT NOT NULL,
+    -- JSON.
+    signature TEXT NOT NULL,
+    published_by INTEGER REFERENCES admins (id) ON DELETE SET NULL,
+    published_at INTEGER NOT NULL
+);
+
+CREATE TABLE package_files (
+    blake3 TEXT PRIMARY KEY,
+    -- Name of the file when it was uploaded.
+    name TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    uploaded_by INTEGER REFERENCES admins (id) ON DELETE SET NULL,
+    uploaded_at INTEGER NOT NULL
+) WITHOUT ROWID;
 
 CREATE TABLE server_settings (
     id INTEGER PRIMARY KEY CHECK (id = 1),

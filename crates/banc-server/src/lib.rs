@@ -8,6 +8,7 @@ pub mod auth;
 pub mod config;
 pub mod control;
 pub mod db;
+pub mod packages;
 pub mod relay;
 pub mod relay_proxy;
 pub mod server;

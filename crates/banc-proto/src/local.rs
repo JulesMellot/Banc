@@ -5,13 +5,14 @@
 //! `control::read_frame`. One request, one response, per connection.
 //!
 //! Nothing here runs a command on the workstation: the requests are the
-//! enrollment, which only works on a machine without a team, and reading the
-//! status.
+//! enrollment, which only works on a machine without a team, reading the
+//! status, and a person saying a manual package is done.
 
 use serde::{Deserialize, Serialize};
 
 use crate::keys::Fingerprint;
 use crate::machine::{Inventory, MachineRole, PersonRole};
+use crate::packages::WorkstationReport;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -23,6 +24,10 @@ pub enum Request {
         invite: InviteInput,
         /// Name shown in the admin. Default: the computer name.
         name: Option<String>,
+    },
+    /// A person followed the instructions of a manual package.
+    ConfirmManual {
+        id: String,
     },
 }
 
@@ -47,6 +52,9 @@ pub struct AgentStatus {
     /// `None`: the machine has not joined a team yet.
     pub enrollment: Option<Enrollment>,
     pub inventory: Inventory,
+    /// Where the workstation stands against the team's manifest.
+    #[serde(default)]
+    pub packages: Option<Box<WorkstationReport>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

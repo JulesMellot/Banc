@@ -4,6 +4,7 @@
   import type { Commands, KeyInfo, NewKey } from '../lib/agent';
   import { errorMessage } from '../lib/format';
   import { t } from '../lib/i18n';
+  import Publish from './Publish.svelte';
 
   let { banc, server: initialServer }: { banc: Commands; server: string } = $props();
 
@@ -112,6 +113,7 @@
       {#if registered}<p>{t('adminkey.registered')}</p>{/if}
       <button type="submit" disabled={busy}>{t('adminkey.register')}</button>
     </form>
+    <Publish {banc} server={initialServer} />
   {:else if restoring}
     <form onsubmit={restore}>
       <label>
