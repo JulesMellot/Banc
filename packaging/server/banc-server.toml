@@ -1,4 +1,6 @@
 # banc-server configuration.
+# Reference of every setting. In Docker, packaging/server/entrypoint.sh writes
+# this file from the environment.
 # Start with: banc-server --config /etc/banc/banc-server.toml
 # A relative path starts from this file's folder. An unknown key is refused.
 

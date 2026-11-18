@@ -85,7 +85,7 @@ iroh 1.x connects two machines identified by their public key, directly or throu
 ### VPS exposure
 
 - One domain name, port 443, a Let's Encrypt certificate.
-- The HTTPS API and the iroh relay share TCP port 443. Until phase 7 a reverse proxy in front of the server terminates TLS and routes the relay paths (`packaging/server/Caddyfile`).
+- The HTTPS API and the iroh relay share TCP port 443. A Caddy container in front of the server terminates TLS and routes the relay paths (`packaging/server/compose.yaml`).
 - The server's own iroh endpoint listens on UDP 443 (QUIC). Agents that cannot reach it go through the relay.
 - PostgreSQL listens on `127.0.0.1` only.
 
@@ -542,7 +542,7 @@ Acceptance:
 
 - Signed automatic update, rollback if the new version does not start.
 - Installers: signed and notarized `.pkg`, signed `.msi`, `.deb`, `.rpm`, AppImage.
-- Server as a complete Docker Compose setup. Depot as a Docker image for Synology and QNAP.
+- Depot as a Docker image for Synology and QNAP. (The server's Docker Compose setup already exists: `packaging/server/`.)
 - Nightly SQLite backup to the depot.
 
 Acceptance:

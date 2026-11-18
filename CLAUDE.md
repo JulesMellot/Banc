@@ -61,6 +61,7 @@ Details, with the tools to install, are in `docs/development.md`.
 
 - `cargo xtask check`: the same checks as CI on every push. Steps: `fmt`, `architecture`, `clippy`, `tests`, `migrations`, `frontend`, `app`, `python`, `deny`, `secrets`, `commits`. `cargo xtask check clippy tests` only runs the steps listed. The `app` step builds the Tauri window: on Linux it needs the WebKitGTK packages (`docs/development.md`).
 - `cargo xtask dev-server`, `cargo xtask dev-agent`, `cargo xtask dev-ui`, `cargo xtask dev-app` (the server serves `ui/dist`: run `pnpm build` in `ui/` first, or use `dev-ui`, which proxies `/api` to the server; `dev-app` needs `dev-ui` running)
+- `packaging/server/bundle.sh`: the server's Docker image and Compose files for the VPS, in `dist/server/`; `packaging/server/smoke-test.sh` checks that setup locally
 - `cargo xtask bundle-app`: the window with the agent and the session helper beside it, as an application for a test machine (unsigned, until phase 7)
 - `cargo nextest run --workspace` for the tests alone
 - `cargo xtask schema` after adding a migration, then review the diff of `migrations/schema.sql`
@@ -94,7 +95,8 @@ Phase 1 decisions (server side):
 - **Enrollment over HTTPS**, signed with the machine key. The relay and the control channel only accept enrolled keys, so an unenrolled machine has nothing but HTTPS.
 - **Control channel**: one iroh connection per agent, ALPN `banc/control/1`, length-prefixed JSON frames (64 KB max), heartbeat every 5 minutes. The server can push on it later; it carries data, never commands.
 - **Relay** run inside the server (`iroh-relay` with the `server` feature), with an access check against the `machines` table. The server joins it through its local address, agents through the public URL.
-- **TLS terminated in front** of the server (example `packaging/server/Caddyfile`). The plan's "certificate obtained by the server" moves to phase 7.
+- **Server in Docker on the VPS**: `packaging/server/` holds the image, the Compose setup and Caddy, which terminates TLS. Settings come from `.env` (`BANC_DOMAIN`, `BANC_PUBLIC_IP`), the entrypoint writes the TOML configuration. The image is built off the VPS (`packaging/server/bundle.sh`): a 2 GB VPS cannot afford the fat LTO build.
+- **Mac and Windows builds** come from the `Bundles` workflow (GitHub runners): the window cannot be cross-compiled from Linux. Ad-hoc signed on macOS until phase 7.
 - **Server key in a file** (`data_dir/server.key`, 0600, written by `banc_platform::fs::write_private`): no keychain on the VPS. Workstation secrets still go to the keychain.
 - **First admin** through a one-time token written to `data_dir/setup-token`, never logged.
 - **Admin passwords** argon2id (crate defaults), sessions of 12 hours, token hash only in the database. TOTP is not done yet.

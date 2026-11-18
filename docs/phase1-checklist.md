@@ -2,20 +2,23 @@
 
 The phase 1 acceptance criteria (section 13 of `docs/PLAN.md`) need real machines: a click on a link, the OS's administrator prompt, a window, a tray icon, Resolve installed. CI covers the rest. This is the procedure, with what to write down.
 
-What you need: the VPS with a domain name, a Mac, a Windows PC and a Linux workstation, each with Resolve Studio, and on each machine the build tools of `docs/development.md` (Rust, Node.js, pnpm; WebKitGTK packages on Linux).
+What you need: the VPS with a domain name, a Mac, a Windows PC and a Linux workstation, each with Resolve Studio. The Mac and Windows builds come from the `Bundles` workflow on GitHub; building on the machine itself needs the tools of `docs/development.md`.
 
 ## 1. Server on the VPS
 
-1. Build: `cargo xtask dist --target x86_64-unknown-linux-gnu`, and the web admin: `(cd ui && pnpm install && pnpm build)`.
-2. Copy `dist/x86_64-unknown-linux-gnu/banc-server` to `/usr/local/bin`, `ui/dist` to `/usr/share/banc/admin`, `packaging/server/banc-server.toml` to `/etc/banc/`. In the configuration: `public_url`, `http.admin_ui = "/usr/share/banc/admin"`, `iroh.public_addrs = ["<VPS IP>:443"]`.
-3. Front: Caddy with `packaging/server/Caddyfile` (your domain). Open TCP 443 and UDP 443 on the VPS firewall, nothing else.
-4. Start: `packaging/server/banc-server.service` in `/etc/systemd/system`, then `systemctl enable --now banc-server`.
-5. Check: `curl https://<domain>/api/v1/info` answers with `"setup_required": true`.
+The VPS needs Docker with Compose, and a domain name whose DNS A record points to it.
+
+1. On a development machine with Docker: `packaging/server/bundle.sh`. It writes the image and the Compose files to `dist/server/`.
+2. Copy `dist/server/` to the VPS, then load the image: `gunzip -c banc-server-image.tar.gz | docker load`.
+3. `cp .env.example .env`, then set `BANC_DOMAIN` and `BANC_PUBLIC_IP`.
+4. Open TCP 80, TCP 443 and UDP 443 on the VPS firewall, nothing else. Port 80 is used for the Let's Encrypt certificate and the redirect to HTTPS.
+5. Start: `docker compose up -d`.
+6. Check: `curl https://<domain>/api/v1/info` answers with `"setup_required": true`.
 
 ## 2. First admin and admin key (on the Mac)
 
-1. Open `https://<domain>`, enter the code from `/var/lib/banc/setup-token`, choose a name and a password.
-2. On the Mac: `cargo xtask bundle-app`, then install the `.app` from `ui/src-tauri/target/release/bundle/macos/` into `/Applications` (unsigned until phase 7: right-click, Open, the first time).
+1. Open `https://<domain>`, enter the code given by `docker compose exec banc-server cat /var/lib/banc/setup-token`, choose a name and a password.
+2. On the Mac: take the build from the `Bundles` workflow (`banc-macos-aarch64` for Apple silicon, `banc-macos-x86_64` for Intel), or run `cargo xtask bundle-app` on the Mac. Install `Banc.app` into `/Applications`. A downloaded build is not notarized until phase 7: remove the quarantine once with `xattr -dr com.apple.quarantine /Applications/Banc.app`.
 3. Open Banc, "Clé d'administration", "Créer la clé". Write the code down, type the last group back.
 4. "Enregistrer": server address, admin name and password.
 5. In the web admin, the admin key section shows the same fingerprint as the window.

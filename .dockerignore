@@ -1,0 +1,14 @@
+# Only what the server image is built from reaches Docker.
+*
+!Cargo.toml
+!Cargo.lock
+!rust-toolchain.toml
+!.cargo/config.toml
+!crates/**
+!migrations/**
+!ui/**
+!packaging/server/entrypoint.sh
+ui/node_modules
+ui/dist
+ui/src-tauri
+**/target

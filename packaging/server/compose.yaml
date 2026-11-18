@@ -1,0 +1,57 @@
+# The Banc server on the VPS. Settings are in `.env` (see `.env.example`).
+# Exposed: TCP 80 and 443 (Caddy), UDP 443 (iroh). Nothing else.
+name: banc
+
+services:
+  banc-server:
+    image: ${BANC_IMAGE:-banc-server:latest}
+    restart: unless-stopped
+    environment:
+      BANC_DOMAIN: ${BANC_DOMAIN:?set BANC_DOMAIN in .env}
+      BANC_PUBLIC_IP: ${BANC_PUBLIC_IP:?set BANC_PUBLIC_IP in .env}
+    ports:
+      - "443:443/udp"
+    volumes:
+      - banc-data:/var/lib/banc
+    tmpfs:
+      - /run/banc:uid=10001,gid=10001,mode=0700
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 5s
+    logging: &logging
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      banc-server:
+        condition: service_healthy
+    environment:
+      BANC_DOMAIN: ${BANC_DOMAIN:?set BANC_DOMAIN in .env}
+    ports:
+      - "80:80/tcp"
+      - "443:443/tcp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    security_opt:
+      - no-new-privileges:true
+    logging: *logging
+
+volumes:
+  banc-data:
+  caddy-data:
+  caddy-config:

@@ -12,9 +12,9 @@ One process, three listeners:
 | iroh endpoint | `0.0.0.0:443` (UDP) | Control channel with the agents (ALPN `banc/control/1`) |
 | iroh relay | `127.0.0.1:3340` (TCP) | Relay of the team's iroh traffic, enrolled machines only |
 
-TLS is terminated in front of the server. `packaging/server/Caddyfile` is an example: port 443, a Let's Encrypt certificate, `/relay`, `/ping` and `/generate_204` to the relay, everything else to the API. The plan asks for the server to obtain its certificate itself; that is left to phase 7, with the Docker Compose setup.
+The server runs in Docker on the VPS (`packaging/server/compose.yaml`), next to a Caddy container that terminates TLS: port 443, a Let's Encrypt certificate, `/relay`, `/ping` and `/generate_204` to the relay, everything else to the API. Caddy's HTTP/3 is off, because UDP 443 belongs to the iroh endpoint. In the container the API and the relay listen on every interface of the Compose network; only UDP 443 is published by the server.
 
-The server keeps in `data_dir`:
+The server keeps in `data_dir` (the `banc-data` Docker volume):
 
 - `banc.sqlite`: the database;
 - `server.key`: its iroh key, mode 0600. The VPS has no keychain;
@@ -79,4 +79,4 @@ Every change (admin created, admin key set, invitation created or revoked, machi
 2. Open the web admin, enter the token, choose a name and a password (12 characters at least). The file is deleted.
 3. Register the admin key from the Banc window ("Clé d'administration", see `docs/workstation.md`). Until then the web admin refuses to create invitations.
 
-A systemd unit for the VPS is in `packaging/server/banc-server.service`; the full setup is step 1 of `docs/phase1-checklist.md`.
+The full setup on the VPS is step 1 of `docs/phase1-checklist.md`. `packaging/server/smoke-test.sh` starts the same Compose setup locally and checks it; PRs run it.
