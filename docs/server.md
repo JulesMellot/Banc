@@ -10,9 +10,9 @@ One process, three listeners:
 |---|---|---|
 | HTTP API and web admin | `127.0.0.1:8080` (TCP) | Enrollment, server information, admin |
 | iroh endpoint | `0.0.0.0:443` (UDP) | Control channel with the agents (ALPN `banc/control/1`) |
-| iroh relay | `127.0.0.1:3340` (TCP) | Relay of the team's iroh traffic, enrolled machines only |
+| iroh relay | `127.0.0.1:3340` (TCP), reached through the HTTP port | Relay of the team's iroh traffic, enrolled machines only |
 
-The server runs in Docker on the VPS (`packaging/server/compose.yaml`), next to a Caddy container that terminates TLS: port 443, a Let's Encrypt certificate, `/relay`, `/ping` and `/generate_204` to the relay, everything else to the API. Caddy's HTTP/3 is off, because UDP 443 belongs to the iroh endpoint. In the container the API and the relay listen on every interface of the Compose network; only UDP 443 is published by the server.
+The server runs in Docker (`packaging/server/README.md`). TLS is terminated in front of it, by Coolify's proxy or by the Caddy of `packaging/server/compose.yaml`. The HTTP port carries everything: the API, the web admin, and the relay's `/relay`, `/ping` and `/generate_204` paths, which it forwards to the relay's local listener. Publishing UDP 443 is optional: without it, agents reach the server through the relay.
 
 The server keeps in `data_dir` (the `banc-data` Docker volume):
 

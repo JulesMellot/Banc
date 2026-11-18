@@ -19,6 +19,7 @@ COPY migrations/ migrations/
 RUN cargo build --release --locked -p banc-server --bin banc-server
 
 FROM debian:trixie-slim
+LABEL org.opencontainers.image.source="https://github.com/JulesMellot/Banc"
 RUN useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin banc \
     && install -d -o banc -g banc -m 0700 /var/lib/banc /run/banc
 COPY --from=server /src/target/release/banc-server /usr/local/bin/banc-server
@@ -27,6 +28,8 @@ COPY packaging/server/entrypoint.sh /usr/local/bin/banc-entrypoint
 RUN chmod 0755 /usr/local/bin/banc-entrypoint
 USER banc
 VOLUME /var/lib/banc
-# Bound inside the container only: Caddy reaches them over the Compose network.
-EXPOSE 8080/tcp 3340/tcp 443/udp
+# HTTP: API, web admin and relay. UDP: optional direct iroh connections.
+EXPOSE 8080/tcp 443/udp
+HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=6 \
+    CMD ["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"]
 ENTRYPOINT ["/usr/local/bin/banc-entrypoint"]

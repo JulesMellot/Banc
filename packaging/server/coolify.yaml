@@ -1,0 +1,23 @@
+# Banc server on Coolify, or any platform that puts HTTPS in front of a
+# container. Paste this file as a Docker Compose resource, set BANC_DOMAIN, and
+# give the banc-server service the domain https://<BANC_DOMAIN>:8080.
+services:
+  banc-server:
+    image: ${BANC_IMAGE:-ghcr.io/julesmellot/banc-server:latest}
+    restart: unless-stopped
+    environment:
+      BANC_DOMAIN: ${BANC_DOMAIN:?the domain name of the server}
+    expose:
+      - "8080"
+    volumes:
+      - banc-data:/var/lib/banc
+    tmpfs:
+      - /run/banc:uid=10001,gid=10001,mode=0700
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  banc-data:

@@ -9,9 +9,12 @@ export BANC_DOMAIN=localhost
 export BANC_PUBLIC_IP=127.0.0.1
 compose="docker compose -p banc-smoke -f $here/compose.yaml"
 
+alone=banc-smoke-alone
+
 cleanup() {
   $compose logs --no-color --tail 40 >&2 || true
   $compose down -v --timeout 10 >/dev/null 2>&1 || true
+  docker rm -f "$alone" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
@@ -58,5 +61,24 @@ $compose up -d --force-recreate --wait --wait-timeout 90 banc-server
 wait_for_info
 key() { sed -n 's/.*"endpoint_id":"\([^"]*\)".*/\1/p'; }
 [ "$(echo "$first" | key)" = "$(info | key)" ] || fail "the server key changed on restart"
+
+# Behind a hosting platform: the image alone, one HTTP port, only the domain.
+docker compose -f "$here/coolify.yaml" config -q
+docker run -d --name "$alone" --read-only --tmpfs /run/banc:uid=10001,gid=10001,mode=0700 \
+  -v /var/lib/banc -e BANC_DOMAIN=https://banc.example.com/ \
+  -p 127.0.0.1:18080:8080 "$BANC_IMAGE" >/dev/null
+tries=0
+until [ "$(docker inspect -f '{{.State.Health.Status}}' "$alone")" = healthy ]; do
+  tries=$((tries + 1))
+  [ "$tries" -lt 60 ] || fail "the image alone never becomes healthy"
+  sleep 1
+done
+alone_info=$(curl -fsS --max-time 5 http://127.0.0.1:18080/api/v1/info)
+echo "$alone_info" | grep -q '"relay_url":"https://banc.example.com"' ||
+  fail "relay URL of the image alone: $alone_info"
+echo "$alone_info" | grep -q '"direct_addrs":\[\]' ||
+  fail "direct addresses of the image alone: $alone_info"
+status=$(curl -s --max-time 5 -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/generate_204)
+[ "$status" = 204 ] || fail "the HTTP port answers $status on /generate_204"
 
 echo "server image: all checks passed"

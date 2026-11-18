@@ -1,5 +1,4 @@
-# Front of banc-server: TLS on port 443 with a Let's Encrypt certificate, the
-# relay paths to the iroh relay, everything else to the API and the web admin.
+# TLS in front of banc-server, for a VPS without a hosting platform.
 {
 	servers {
 		# No HTTP/3: UDP 443 belongs to the server's iroh endpoint.
@@ -8,7 +7,5 @@
 }
 
 {$BANC_DOMAIN} {
-	@relay path /relay /relay/* /ping /generate_204
-	reverse_proxy @relay banc-server:3340
 	reverse_proxy banc-server:8080
 }

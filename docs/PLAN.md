@@ -85,8 +85,8 @@ iroh 1.x connects two machines identified by their public key, directly or throu
 ### VPS exposure
 
 - One domain name, port 443, a Let's Encrypt certificate.
-- The HTTPS API and the iroh relay share TCP port 443. A Caddy container in front of the server terminates TLS and routes the relay paths (`packaging/server/compose.yaml`).
-- The server's own iroh endpoint listens on UDP 443 (QUIC). Agents that cannot reach it go through the relay.
+- The HTTPS API and the iroh relay share TCP port 443 and one HTTP port in the container. TLS is terminated in front of it, by the hosting platform or by Caddy (`packaging/server/README.md`).
+- The server's own iroh endpoint listens on UDP 443 (QUIC) when that port can be published. Agents that cannot reach it go through the relay.
 - PostgreSQL listens on `127.0.0.1` only.
 
 If the VPS is down, coordination and collaboration stop. That is accepted. Reservation mode keeps working on the files already present, and publications go out when the server comes back.
