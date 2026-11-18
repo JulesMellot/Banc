@@ -21,7 +21,8 @@
       <dt>{t('machines.resolve')}</dt>
       <dd>
         {#if status.inventory.resolve}
-          {status.inventory.resolve.version} ({status.inventory.resolve.edition})
+          {status.inventory.resolve.version}
+          {#if status.inventory.resolve.edition}({status.inventory.resolve.edition}){/if}
         {:else}
           {t('machines.resolve_missing')}
         {/if}

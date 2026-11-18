@@ -32,7 +32,7 @@ Also try: a second click on the same link (expected: invitation already used), a
 
 ## 4. The admin sees the machines and their Resolve version
 
-For each machine, compare the version and edition shown in the web admin with Resolve's "About" box. If one is wrong or missing, note the OS and send:
+For each machine, compare the version shown in the web admin with Resolve's "About" box. The build number is not shown, and the edition only appears when the installed files name Studio, which they do not on macOS or Windows. If one is wrong or missing, note the OS and send:
 
 - macOS: `plutil -p "/Applications/DaVinci Resolve/DaVinci Resolve.app/Contents/Info.plist" | grep -i -E "version|name"`;
 - Windows: `Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* | Where-Object DisplayName -like "DaVinci*" | Select DisplayName, DisplayVersion`;

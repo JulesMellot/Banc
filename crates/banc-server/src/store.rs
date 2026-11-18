@@ -580,13 +580,10 @@ fn machine_row(row: &Row<'_>) -> rusqlite::Result<MachineRow> {
     let key: Vec<u8> = row.get(2)?;
     let edition: Option<String> = row.get(13)?;
     let version: Option<String> = row.get(14)?;
-    let resolve = match (edition, version) {
-        (Some(edition), Some(version)) => Some(ResolveInstall {
-            edition: edition.parse().map_err(|e| conversion(13, e))?,
-            version,
-        }),
-        _ => None,
-    };
+    let edition = edition
+        .map(|edition| edition.parse().map_err(|e| conversion(13, e)))
+        .transpose()?;
+    let resolve = version.map(|version| ResolveInstall { edition, version });
     Ok(MachineRow {
         id: row.get(0)?,
         name: row.get(1)?,
@@ -678,7 +675,11 @@ fn record_inventory(
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .optional()?;
-    let edition = inventory.resolve.as_ref().map(|r| r.edition.as_str());
+    let edition = inventory
+        .resolve
+        .as_ref()
+        .and_then(|r| r.edition)
+        .map(|edition| edition.as_str());
     let version = inventory.resolve.as_ref().map(|r| r.version.as_str());
     conn.execute(
         "UPDATE machines SET os_version = ?2, hostname = ?3, resolve_edition = ?4,

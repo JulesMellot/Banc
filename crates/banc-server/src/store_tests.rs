@@ -253,7 +253,7 @@ fn hello_and_reports_update_the_machine() {
         hostname: "station-3.local".to_owned(),
         os_version: "macOS 26.1".to_owned(),
         resolve: Some(ResolveInstall {
-            edition: ResolveEdition::Studio,
+            edition: Some(ResolveEdition::Studio),
             version: "21.1".to_owned(),
         }),
     };
@@ -271,7 +271,7 @@ fn hello_and_reports_update_the_machine() {
     // Same inventory again: no new event. Resolve updated: one event.
     record_report(&mut conn, id, &inventory, NOW + 301).unwrap();
     inventory.resolve = Some(ResolveInstall {
-        edition: ResolveEdition::Studio,
+        edition: Some(ResolveEdition::Studio),
         version: "21.2".to_owned(),
     });
     record_report(&mut conn, id, &inventory, NOW + 302).unwrap();
@@ -281,6 +281,17 @@ fn hello_and_reports_update_the_machine() {
         .count();
     // Once at the first hello (nothing to 21.1), once for 21.1 to 21.2.
     assert_eq!(changes, 2);
+
+    // The version is kept when the edition is unknown.
+    inventory.resolve = Some(ResolveInstall {
+        edition: None,
+        version: "21.2".to_owned(),
+    });
+    record_report(&mut conn, id, &inventory, NOW + 303).unwrap();
+    assert_eq!(
+        active_machine(&conn, &key(1)).unwrap().unwrap().resolve,
+        inventory.resolve
+    );
 
     inventory.resolve = None;
     record_report(&mut conn, id, &inventory, NOW + 303).unwrap();

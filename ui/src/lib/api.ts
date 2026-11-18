@@ -37,7 +37,7 @@ export interface Machine {
   agent_version: string;
   os_version: string | null;
   hostname: string | null;
-  resolve: { edition: 'studio' | 'free'; version: string } | null;
+  resolve: { edition: 'studio' | 'free' | null; version: string } | null;
   revoked_at: number | null;
   online: boolean;
 }
