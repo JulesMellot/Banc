@@ -6,7 +6,7 @@ Context: Banc is an internal tool for a company's salaried editors and colorists
 
 ## Where we are
 
-Updated 2026-11-17.
+Updated 2026-11-18.
 
 | Step (section 14) | Status |
 |---|---|
@@ -15,7 +15,7 @@ Updated 2026-11-17.
 | Prototypes P3 to P10 | Not started. |
 | Phase 1, server side | Done (PR #5): enrollment, invitations, machines, admin accounts, admin key registration, iroh endpoint with the control channel, relay restricted to the team, minimal web admin. See `docs/server.md`. |
 | Phase 1, workstation side | Coded and tested in CI: agent (machine key, enrollment, connection, heartbeat, inventory, Resolve detection, system service), window (`banc://` link, joining, workstation state, admin key with recovery code), session helper (tray icon on macOS and Windows), `idle-bench` extended. See `docs/workstation.md`. **Hand test on the three OSes pending**: `docs/phase1-checklist.md`. |
-| Phase 2, signed manifest | Started: manifest format, signature and comparison with the workstation. Remaining: package store, editor, delivery to the agents, installers (needs prototype P9), machines-by-packages grid. |
+| Phase 2, signed manifest | Coded and tested in CI: package store, manifest editor, signature in the window, delivery over iroh, installation (`copy`, `font`, `manual`, and the `pkg`, `msi`, `exe`, `deb`, `rpm`, `run` installers), machines-by-packages grid. **Hand test pending**: `docs/phase2-checklist.md`, with prototype P9 for the team's real plugins. Not done: detection rules, download of the Resolve installer. |
 | Phases 3 to 6 and 8 | Not started. |
 | Phase 7, distribution and updates | Started ahead of plan: signed automatic updates with rollback, automatic releases, start at login. Remaining: signed and notarized installers, `.deb`, `.rpm`, AppImage, depot image, nightly backup. |
 

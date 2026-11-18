@@ -132,6 +132,13 @@ Phase 2 decisions:
 
 - **Manifest** (`banc_proto::manifest`): the exact signed bytes travel with their signature (domain `banc/manifest/1`), and nothing is read before the signature is checked against the admin key recorded at enrollment. An older version than the one applied is refused. The Resolve edition is not part of it: the installed files cannot tell it.
 - **Comparison with the workstation** (`banc_agent::packages`): pure decisions. Banc removes only what it installed, leaves someone else's install in place, imposes only required packages, and changes nothing while Resolve is open.
+- **Publication in two places**: the web admin uploads files and edits an unsigned draft; the window reads that draft, shows it, and signs the copy it holds in Rust, never something sent back by the page. The private key therefore stays out of the browser, and a compromised server cannot get something signed without the admin seeing it.
+- **Delivery over iroh** (`banc_proto::packages`, ALPN `banc/packages/1`): the handshake proves the machine key, so agents need no HTTP credential. The server only serves the latest manifest and the files it lists. Files are kept under their BLAKE3 hash in `data_dir/packages`.
+- **Installation** (`banc_agent::install`, `banc_agent::sync`): `copy` unpacks a `.zip` next to its destination then renames, and puts the previous version back on failure. A file or folder Banc did not install is never replaced: identical content is left alone, anything else is reported as a conflict. Installers run with fixed silent arguments, those of `exe` and `run` being signed in the manifest.
+- **Removing an installer's package**: `pkg`, `msi`, `exe`, `deb`, `rpm` and `run` are left installed when the manifest drops them, because only the vendor knows what they wrote. Banc logs it and forgets the package.
+- **Fusion templates and scripts go in the all-users folders**, since the service has no user session. These paths, like the rest of section 11 of the plan, still have to be confirmed on real machines.
+- **Package detection rules are not done** (`file_exists`, `bundle_version`, `registry`, `ofx_bundle`, `font`, `command`): Banc knows what it installed itself and what a person confirmed for a manual package.
+- **Opening projects**: `WorkstationReport::can_open_projects` is the gate, shown in the window and the admin. Phase 4 calls it when projects exist. Banc does not download the Resolve installer yet.
 
 ## Commits and CI
 

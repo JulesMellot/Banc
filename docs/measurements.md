@@ -32,3 +32,14 @@ macOS and Windows measurements: to be done by hand in phase 1, once `idle-bench`
 macOS and Windows: by hand, step 6 of `docs/phase1-checklist.md`. On those OSes the session helper carries a tray icon and an event loop, which Linux does not have yet: its 10 MB target is to be checked there.
 
 **Phase 1, server side.** The agent is unchanged since phase 0, so its measurement stands. The server runs the API, the iroh endpoint (connected to its own relay) and the relay, with a database holding one admin. The release binary is 17.6 MB. With the size profile of the workstation side: 10.2 MB and 13.4 MB at rest.
+
+## Phase 2, 2026-11-18
+
+`cargo xtask idle-bench` on Linux x86_64, release build, with the package work in the agent.
+
+| Process | Resident memory | CPU over 60 s |
+|---|---|---|
+| Agent, not enrolled | 5.5 MB | 0.00% |
+| Agent, enrolled and connected | 10.8 MB | 0.03% |
+
+macOS and Windows remain to be measured by hand.
