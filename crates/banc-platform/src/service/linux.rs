@@ -1,7 +1,9 @@
 use std::path::Path;
 use std::process::Command;
 
-use super::SYSTEMD_UNIT;
+use std::ffi::OsString;
+
+use super::{SYSTEMD_UNIT, UPDATER_LABEL};
 
 const UNIT_DIR: &str = "/etc/systemd/system";
 
@@ -23,6 +25,38 @@ pub(super) fn uninstall() -> std::io::Result<()> {
     }
     systemctl(&["daemon-reload"])
 }
+
+pub(super) fn stop() -> std::io::Result<()> {
+    systemctl(&["stop", SYSTEMD_UNIT])
+}
+
+pub(super) fn start() -> std::io::Result<()> {
+    systemctl(&["start", SYSTEMD_UNIT])
+}
+
+/// `Restart=always` is in the unit, and there is no tray icon on Linux yet.
+pub(super) fn keep_running(_session: &Path) -> std::io::Result<()> {
+    Ok(())
+}
+
+/// A transient unit: stopping the service does not end it.
+pub(super) fn launch_updater(program: &Path, args: &[OsString]) -> std::io::Result<()> {
+    let status = Command::new("systemd-run")
+        .arg(format!("--unit={UPDATER_LABEL}"))
+        .args(["--collect", "--quiet"])
+        .arg(program)
+        .args(args)
+        .status()?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(std::io::Error::other(format!(
+            "systemd-run failed: {status}"
+        )))
+    }
+}
+
+pub(super) fn finish_updater() {}
 
 pub(super) fn run(main: impl FnOnce() -> u32 + Send + 'static) -> std::io::Result<u32> {
     Ok(main())

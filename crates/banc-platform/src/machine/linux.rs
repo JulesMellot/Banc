@@ -31,3 +31,18 @@ pub(super) fn resolve_facts() -> Vec<ResolveFact> {
         })
         .collect()
 }
+
+/// `pgrep` answers 0 when a process has this exact name, 1 when none has.
+pub(super) fn resolve_running() -> Option<bool> {
+    let status = std::process::Command::new("pgrep")
+        .args(["-x", "resolve"])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .ok()?;
+    match status.code() {
+        Some(0) => Some(true),
+        Some(1) => Some(false),
+        _ => None,
+    }
+}

@@ -35,6 +35,11 @@ pub fn write_private(path: &Path, content: &[u8]) -> std::io::Result<()> {
     std::fs::rename(&temporary, path)
 }
 
+/// Permissions of a file of an installed application.
+pub fn set_installed_mode(path: &Path, executable: bool) -> std::io::Result<()> {
+    os::set_installed_mode(path, executable)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

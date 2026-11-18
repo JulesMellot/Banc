@@ -10,3 +10,8 @@ pub(super) fn create_private(path: &Path) -> std::io::Result<File> {
         .truncate(true)
         .open(path)
 }
+
+/// Files inherit the permissions of the application's folder.
+pub(super) fn set_installed_mode(_path: &Path, _executable: bool) -> std::io::Result<()> {
+    Ok(())
+}

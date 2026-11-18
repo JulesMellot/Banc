@@ -10,6 +10,7 @@ pub mod local;
 pub mod logging;
 pub mod machine;
 pub mod paths;
+pub mod process;
 pub mod secrets;
 pub mod service;
 pub mod signal;

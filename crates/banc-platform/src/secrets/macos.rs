@@ -2,20 +2,20 @@ use apple_native_keyring_store::keychain::{Cred, MacKeychainDomain};
 use keyring_core::Error;
 
 use super::{Backend, SecretError};
-use crate::paths::Scope;
+use crate::paths::{self, Scope};
 
+/// Files readable by root only for the service, under
+/// `/Library/Application Support/Banc/secrets`. The login keychain for the
+/// application.
 pub(super) fn backend(scope: Scope) -> Result<Backend, SecretError> {
-    Ok(Backend::Keychain(scope))
+    match scope {
+        Scope::System => Ok(Backend::Files(paths::state_dir(scope)?.join("secrets"))),
+        Scope::User => Ok(Backend::Keychain(scope)),
+    }
 }
 
-/// The System keychain for the service (it runs as root), the login
-/// keychain for the application.
-fn entry(scope: Scope, service: &str, name: &str) -> Result<keyring_core::Entry, SecretError> {
-    let domain = match scope {
-        Scope::System => MacKeychainDomain::System,
-        Scope::User => MacKeychainDomain::User,
-    };
-    Cred::build(domain, service, name).map_err(keychain)
+fn entry(_scope: Scope, service: &str, name: &str) -> Result<keyring_core::Entry, SecretError> {
+    Cred::build(MacKeychainDomain::User, service, name).map_err(keychain)
 }
 
 pub(super) fn get(scope: Scope, service: &str, name: &str) -> Result<Option<Vec<u8>>, SecretError> {
