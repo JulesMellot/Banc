@@ -1,5 +1,5 @@
 # Pinned version, so that clippy does not change its mind between two runs.
 # Dependabot proposes version bumps.
 [toolchain]
-channel = "1.99.1"
+channel = "1.100.0"
 components = ["rustfmt", "clippy"]
