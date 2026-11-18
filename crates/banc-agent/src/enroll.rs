@@ -42,7 +42,7 @@ pub fn http_client() -> Result<reqwest::Client, EnrollError> {
     let _ = rustls::crypto::ring::default_provider().install_default();
     reqwest::Client::builder()
         .timeout(Duration::from_secs(30))
-        .user_agent(concat!("banc-agent/", env!("CARGO_PKG_VERSION")))
+        .user_agent(format!("banc-agent/{}", banc_proto::VERSION))
         .build()
         .map_err(|e| EnrollError::Unreachable(e.to_string()))
 }
@@ -64,7 +64,7 @@ pub async fn enroll(
         name.to_owned(),
         os,
         banc_platform::machine::ARCH.to_owned(),
-        env!("CARGO_PKG_VERSION").to_owned(),
+        banc_proto::VERSION.to_owned(),
     );
     let response = client
         .post(format!("{}{ENROLL_PATH}", invite.server))

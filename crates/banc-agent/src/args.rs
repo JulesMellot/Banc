@@ -12,6 +12,7 @@ Usage:
   banc-agent enroll --server <url> --key <key> [--name <name>]
   banc-agent status                        show the agent's state
   banc-agent service install|uninstall     register or remove the system service
+  banc-agent update-apply <file>           install a downloaded update (started by the agent)
 
 Options:
   --state-dir <dir>  data folder (default: the system one; secrets go there too)
@@ -51,6 +52,7 @@ pub enum Command {
     },
     InstallService,
     UninstallService,
+    ApplyUpdate(PathBuf),
     Help,
     Version,
 }
@@ -109,6 +111,9 @@ pub fn parse(mut parser: lexopt::Parser) -> Result<Command, lexopt::Error> {
         (Some("status"), []) => Ok(Command::Status { socket }),
         (Some("service"), [action]) if action == "install" => Ok(Command::InstallService),
         (Some("service"), [action]) if action == "uninstall" => Ok(Command::UninstallService),
+        (Some(banc_agent::update::APPLY_COMMAND), [file]) => {
+            Ok(Command::ApplyUpdate(PathBuf::from(file)))
+        }
         (Some(other), _) => Err(format!("unknown command or arguments: {other}").into()),
         (None, _) => Err("unexpected arguments".into()),
     }
@@ -194,6 +199,10 @@ mod tests {
         assert_eq!(
             parse_args(&["service", "uninstall"]).unwrap(),
             Command::UninstallService
+        );
+        assert_eq!(
+            parse_args(&["update-apply", "/a/pending.json"]).unwrap(),
+            Command::ApplyUpdate(PathBuf::from("/a/pending.json"))
         );
         assert_eq!(parse_args(&["--version"]).unwrap(), Command::Version);
         assert_eq!(parse_args(&["--help"]).unwrap(), Command::Help);

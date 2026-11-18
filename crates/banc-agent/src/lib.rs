@@ -11,6 +11,7 @@ pub mod control;
 pub mod enroll;
 pub mod local;
 pub mod state;
+pub mod update;
 
 use std::future::Future;
 use std::path::PathBuf;
@@ -110,7 +111,7 @@ impl Shared {
     pub fn status(&self) -> AgentStatus {
         let connection = *lock(&self.connection);
         AgentStatus {
-            version: env!("CARGO_PKG_VERSION").to_owned(),
+            version: banc_proto::VERSION.to_owned(),
             enrollment: self.enrolled().map(|enrolled| Enrollment {
                 server: enrolled.server,
                 machine_id: enrolled.machine_id,

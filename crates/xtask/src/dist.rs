@@ -1,13 +1,13 @@
 //! `cargo xtask dist`: release binaries, sorted by target.
 //! `cargo xtask bundle-app`: the window with the agent and the session
-//! helper beside it, as an application to install by hand on a test
-//! machine. Signed installers arrive in phase 7.
+//! helper beside it, as an installer and as the files of an update.
 
 use std::path::Path;
 
 use anyhow::Context;
 
 use crate::cmd::{cargo, output, run, say, tool};
+use crate::release;
 
 const BINARIES: &[&str] = &["banc-agent", "banc-session", "banc-server"];
 
@@ -23,9 +23,13 @@ pub fn dist(root: &Path, targets: &[String]) -> anyhow::Result<()> {
 
 /// Builds the agent and the session helper, places them where Tauri
 /// expects its side programs, then bundles the window for this machine.
-pub fn bundle_app(root: &Path) -> anyhow::Result<()> {
+pub fn bundle_app(
+    root: &Path,
+    version: Option<&str>,
+    payload: Option<&Path>,
+) -> anyhow::Result<()> {
     let target = host_target()?;
-    run(cargo(&[
+    let mut build = cargo(&[
         "build",
         "--release",
         "--locked",
@@ -37,8 +41,11 @@ pub fn bundle_app(root: &Path) -> anyhow::Result<()> {
         "banc-session",
         "--bin",
         "banc-session",
-    ])
-    .current_dir(root))?;
+    ]);
+    if let Some(version) = version {
+        build.env("BANC_VERSION", version);
+    }
+    run(build.current_dir(root))?;
     let ui = root.join("ui");
     let binaries = ui.join("src-tauri/binaries");
     std::fs::create_dir_all(&binaries)?;
@@ -52,9 +59,20 @@ pub fn bundle_app(root: &Path) -> anyhow::Result<()> {
     for args in [&["install", "--frozen-lockfile"][..], &["build"]] {
         run(tool("pnpm").args(args).current_dir(&ui))?;
     }
-    run(tool("pnpm")
-        .args(["tauri", "build", "--config", "src-tauri/bundle.conf.json"])
-        .current_dir(&ui))?;
+    let mut tauri = tool("pnpm");
+    tauri.args(["tauri", "build", "--config", "src-tauri/bundle.conf.json"]);
+    if let Some(version) = version {
+        // A file: the quotes of inline JSON do not survive `pnpm.cmd`.
+        let config = ui.join("src-tauri/target/version.conf.json");
+        std::fs::create_dir_all(ui.join("src-tauri/target"))?;
+        std::fs::write(&config, format!("{{\"version\":\"{version}\"}}"))?;
+        tauri.arg("--config").arg(&config);
+    }
+    run(tauri.current_dir(&ui))?;
+    if let Some(payload) = payload {
+        let files = release::bundled_files(root)?;
+        release::write_payload(&files, &release::platform(), payload)?;
+    }
     say(&format!(
         "\nBundles in {}",
         ui.join("src-tauri/target/release/bundle").display()

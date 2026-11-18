@@ -88,7 +88,7 @@ async fn session(
     let (mut send, mut recv) = connection.open_bi().await?;
     let mut inventory = shared.inventory();
     let hello = AgentMessage::Hello {
-        agent_version: env!("CARGO_PKG_VERSION").to_owned(),
+        agent_version: banc_proto::VERSION.to_owned(),
         inventory: inventory.clone(),
     };
     control::write_frame(&mut send, &hello).await?;

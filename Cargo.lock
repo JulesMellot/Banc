@@ -321,6 +321,7 @@ dependencies = [
  "banc-proto",
  "banc-resolve",
  "banc-server",
+ "blake3",
  "iroh",
  "lexopt",
  "reqwest",
@@ -5514,7 +5515,11 @@ name = "xtask"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "banc-platform",
+ "banc-proto",
+ "blake3",
  "clap",
+ "serde_json",
  "tempfile",
 ]
 

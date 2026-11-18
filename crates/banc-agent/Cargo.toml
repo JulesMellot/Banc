@@ -16,6 +16,7 @@ anyhow.workspace = true
 banc-platform.workspace = true
 banc-proto.workspace = true
 banc-resolve.workspace = true
+blake3.workspace = true
 iroh.workspace = true
 lexopt.workspace = true
 reqwest.workspace = true
