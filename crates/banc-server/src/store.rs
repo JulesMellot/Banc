@@ -904,7 +904,7 @@ pub fn publish_manifest(
     conn: &mut Connection,
     version: u64,
     signed: &SignedManifest,
-    admin_id: i64,
+    admin_id: Option<i64>,
     now: i64,
 ) -> Result<()> {
     let tx = conn.transaction()?;
@@ -923,7 +923,8 @@ pub fn publish_manifest(
     log_event(
         &tx,
         now,
-        Actor::Admin(admin_id),
+        // Without a session, the admin key is what vouches for it.
+        admin_id.map_or(Actor::Server, Actor::Admin),
         "manifest_published",
         None,
         &serde_json::json!({ "version": version }),

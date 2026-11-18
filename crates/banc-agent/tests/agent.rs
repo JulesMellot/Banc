@@ -483,7 +483,8 @@ impl Server {
             packages,
         };
         let signed = SignedManifest::sign(&self.admin_key, &manifest).unwrap();
-        store::publish_manifest(&mut self.running.state.db(), version, &signed, 1, NOW).unwrap();
+        store::publish_manifest(&mut self.running.state.db(), version, &signed, Some(1), NOW)
+            .unwrap();
         self.running.state.manifest_version.send_replace(version);
     }
 

@@ -15,6 +15,14 @@ use crate::text;
 
 /// Domain of the manifest signature.
 const MANIFEST_DOMAIN: &str = "banc/manifest/1";
+/// Domain of the request that reads the draft with the admin key.
+const DRAFT_DOMAIN: &str = "banc/manifest-draft/1";
+/// How far a draft request's clock may be from the server's, in seconds.
+const DRAFT_REQUEST_SKEW: u64 = 300;
+/// Where the application reads the draft, with the admin key.
+pub const DRAFT_PATH: &str = "/api/v1/manifest/draft";
+/// Where the application publishes a signed manifest.
+pub const PUBLISH_PATH: &str = "/api/v1/manifest";
 /// Longest package identifier or version text.
 const MAX_NAME: usize = 64;
 /// Architectures a package can be built for.
@@ -287,6 +295,35 @@ impl Manifest {
             }
         }
         Ok(())
+    }
+}
+
+/// Asks the server for the draft. The admin key proves who is asking, so the
+/// application needs no password.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DraftRequest {
+    /// Unix time of the request.
+    pub at: i64,
+    pub signature: Sig,
+}
+
+impl DraftRequest {
+    pub fn signed(admin_key: &SecretKey, at: i64) -> Self {
+        Self {
+            at,
+            signature: keys::sign(admin_key, DRAFT_DOMAIN, at.to_string().as_bytes()),
+        }
+    }
+
+    /// Signed by this key, and recent: an old request cannot be sent again.
+    pub fn is_valid(&self, admin_key: &PublicKey, now: i64) -> bool {
+        self.at.abs_diff(now) <= DRAFT_REQUEST_SKEW
+            && keys::verify(
+                admin_key,
+                DRAFT_DOMAIN,
+                self.at.to_string().as_bytes(),
+                &self.signature,
+            )
     }
 }
 
@@ -650,5 +687,22 @@ mod tests {
         assert!(!required("21.1.2").accepts("21.1.3"));
         assert!(!required("21.1.2").accepts("21.1"));
         assert!(required("21.1.0").accepts("21.1"));
+    }
+
+    #[test]
+    fn a_draft_request_is_tied_to_the_key_and_the_time() {
+        let key = SecretKey::from_bytes(&[3; 32]);
+        let request = DraftRequest::signed(&key, 1_000);
+        assert!(request.is_valid(&key.public(), 1_000));
+        assert!(request.is_valid(&key.public(), 1_300));
+        assert!(!request.is_valid(&key.public(), 1_301), "too old");
+        assert!(!request.is_valid(&key.public(), 699), "from the future");
+        let other = SecretKey::from_bytes(&[4; 32]);
+        assert!(!request.is_valid(&other.public(), 1_000));
+        let moved = DraftRequest {
+            at: 1_001,
+            ..request
+        };
+        assert!(!moved.is_valid(&key.public(), 1_000), "the time is signed");
     }
 }
