@@ -15,7 +15,8 @@ Updated 2026-11-17.
 | Prototypes P3 to P10 | Not started. |
 | Phase 1, server side | Done (PR #5): enrollment, invitations, machines, admin accounts, admin key registration, iroh endpoint with the control channel, relay restricted to the team, minimal web admin. See `docs/server.md`. |
 | Phase 1, workstation side | Coded and tested in CI: agent (machine key, enrollment, connection, heartbeat, inventory, Resolve detection, system service), window (`banc://` link, joining, workstation state, admin key with recovery code), session helper (tray icon on macOS and Windows), `idle-bench` extended. See `docs/workstation.md`. **Hand test on the three OSes pending**: `docs/phase1-checklist.md`. |
-| Phases 2 to 8 | Not started. |
+| Phases 2 to 6 and 8 | Not started. |
+| Phase 7, distribution and updates | Started ahead of plan: signed automatic updates with rollback, automatic releases, start at login. Remaining: signed and notarized installers, `.deb`, `.rpm`, AppImage, depot image, nightly backup. |
 
 Phase 1 acceptance criteria, against what exists:
 
@@ -23,7 +24,7 @@ Phase 1 acceptance criteria, against what exists:
 - *The admin sees the machines and their Resolve version*: the web admin lists them with their state, inventory and Resolve version. Resolve detection reads the sources of section 11, to be confirmed on real machines.
 - *Resource targets at rest are met*: on Linux, agent 5.2 MB alone and 10.2 MB enrolled and connected (0 to 2 CPU ticks a minute), session helper 2.9 MB (no tray icon on Linux), server 13.4 MB. macOS and Windows to be measured by hand (`docs/measurements.md`).
 
-Not done in phase 1, on purpose or for later: TOTP for admins, rate limiting of the login, the server obtaining its own TLS certificate (phase 7), a `users` table, a tray icon on Linux, starting the session helper at login and signed installers (phase 7).
+Not done in phase 1, on purpose or for later: TOTP for admins, rate limiting of the login, the server obtaining its own TLS certificate (phase 7), a `users` table, a tray icon on Linux and signed installers (phase 7).
 
 ## 1. The product on one page
 
@@ -97,7 +98,7 @@ Agents on the same LAN find each other through iroh's local discovery and exchan
 
 ### Identity and security
 
-- Each machine has an Ed25519 key, which is its iroh identifier. The private key stays in the OS keychain.
+- Each machine has an Ed25519 key, which is its iroh identifier. The private key stays on the machine: in the OS keychain on Windows, in a file only root can read on macOS and Linux.
 - Invitation: 32-byte token, single use, valid 7 days, carries the role.
 - A machine only accepts iroh connections from public keys declared for the team. Revoking a machine removes it from the list and cuts its tunnels.
 - Admin accounts: argon2id, optional TOTP.
@@ -540,7 +541,7 @@ Acceptance:
 
 ### Phase 7. Distribution and updates (2 weeks)
 
-- Signed automatic update, rollback if the new version does not start.
+- Signed automatic update, rollback if the new version does not start. Done.
 - Installers: signed and notarized `.pkg`, signed `.msi`, `.deb`, `.rpm`, AppImage.
 - Depot as a Docker image for Synology and QNAP. (The server's Docker Compose setup already exists: `packaging/server/`.)
 - Nightly SQLite backup to the depot.
@@ -613,7 +614,7 @@ All of `ci.yml`, plus what costs more:
 - Long integration tests (large files, network cut simulated during a transfer, resume).
 - An issue opened automatically on failure.
 
-### `release.yml` workflow, on a `vX.Y.Z` tag (phase 7)
+### `release.yml` workflow, on every push to `main`
 
 - Build of every target, installers, signing and notarization.
 - Binaries signed with the release key, kept in the CI secrets.
