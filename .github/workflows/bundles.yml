@@ -1,21 +1,30 @@
-# The window with the agent and the session helper, for test machines.
-# Run by hand from the Actions tab, or by a PR that changes how they are built.
+# The window with the agent and the session helper: the installers, and the
+# files of an update. Called by release.yml, run by hand from the Actions tab,
+# or by a PR that changes how they are built.
 name: Bundles
 
 on:
+  workflow_call:
+    inputs:
+      version:
+        description: Version number of the bundles.
+        type: string
+        required: true
   workflow_dispatch:
   pull_request:
     paths:
       - .github/workflows/bundles.yml
       - crates/xtask/src/dist.rs
+      - crates/xtask/src/release.rs
       - ui/src-tauri/bundle.conf.json
+      - ui/src-tauri/installer-hooks.nsh
       - ui/src-tauri/tauri.conf.json
 
 permissions:
   contents: read
 
 concurrency:
-  group: bundles-${{ github.ref }}
+  group: bundles-${{ github.ref }}-${{ inputs.version }}
   cancel-in-progress: false
 
 env:
@@ -58,10 +67,13 @@ jobs:
           node-version: 22
           cache: pnpm
           cache-dependency-path: ui/pnpm-lock.yaml
-      - run: cargo xtask bundle-app
+      - name: Bundle
+        shell: bash
         env:
           # Ad-hoc signature: Apple silicon refuses a bundle without one.
           APPLE_SIGNING_IDENTITY: "-"
+          VERSION: ${{ inputs.version }}
+        run: cargo xtask bundle-app --payload payload ${VERSION:+--version "$VERSION"}
       - name: Check the signature
         if: runner.os == 'macOS'
         run: codesign --verify --deep --strict --verbose=2 ui/src-tauri/target/release/bundle/macos/Banc.app
@@ -69,5 +81,11 @@ jobs:
         with:
           name: banc-${{ matrix.name }}
           path: ${{ matrix.files }}
+          if-no-files-found: error
+          retention-days: 30
+      - uses: actions/upload-artifact@v7
+        with:
+          name: payload-${{ matrix.name }}
+          path: payload
           if-no-files-found: error
           retention-days: 30

@@ -50,7 +50,7 @@ If the service is not installed, the window offers to install it. The OS asks fo
 | What | macOS | Windows | Linux |
 |---|---|---|---|
 | Enrollment (`agent.json`, no secret) | `/Library/Application Support/Banc` | `%ProgramData%\Banc` | `/var/lib/banc` |
-| Machine key (`machine-key`) | System keychain | Credential Manager (LocalSystem) | `/var/lib/banc/secrets`, root, 0600 |
+| Machine key (`machine-key`) | `/Library/Application Support/Banc/secrets`, root, 0600 | Credential Manager (LocalSystem) | `/var/lib/banc/secrets`, root, 0600 |
 | Logs | `/Library/Logs/Banc` | `%ProgramData%\Banc\logs` | `/var/log/banc` |
 
 A missing key next to an `agent.json` makes the agent forget the enrollment: the machine enrolls again with a new key.
@@ -81,7 +81,32 @@ The server never receives the private key. Phase 2 uses this key to sign the man
 
 ## Tray icon
 
-`banc-session` shows an icon in the menu bar (macOS, no Dock icon) or the notification area (Windows). Its menu: the agent's state, "Ouvrir Banc", "Quitter". The state is asked every minute. On Linux there is no icon yet: `tray-icon` needs GTK there; the helper waits for the end of the session. Starting it at login is the installers' job (phase 7).
+`banc-session` shows an icon in the menu bar (macOS, no Dock icon) or the notification area (Windows). Its menu: the agent's state, "Ouvrir Banc", "Quitter". The state is asked every minute. On Linux there is no icon yet: `tray-icon` needs GTK there; the helper waits for the end of the session. The service registers it at every start: a launchd agent in `/Library/LaunchAgents` on macOS, the `Run` key of the machine on Windows. "Quitter" closes it until the next login. A second copy exits by itself, and a copy whose program was replaced by an update restarts.
+
+## Staying on
+
+The service starts with the machine, before anyone logs in, and restarts after a failure: `KeepAlive` on macOS, `Restart=always` on Linux, failure actions on Windows. The window is not meant to stay open: it ends when it closes, and opens from the tray icon.
+
+## Updates
+
+```
+GitHub release ── update.json (signed) + one file per program
+    │
+    ▼
+agent, every hour ── newer version? signature valid? ── no ──▶ nothing
+    │ yes
+    ▼
+downloads next to the application, checks each BLAKE3, waits for Resolve to close
+    │
+    ▼
+copy of the old agent, outside the service
+    stops the service ▶ replaces the files ▶ starts the service
+    │
+    ├── the new version answers and stays up ▶ done
+    └── otherwise ▶ the old version is put back, this version is not tried again
+```
+
+The download site is not trusted: the release key decides, and its private half never reaches the VPS. An old signed version cannot be replayed, since only a newer version is accepted. Everything is written to the agent's logs (`banc-agent-update` for the installation), and the web admin shows each machine's version. `cargo xtask update-e2e` runs this whole path against a real system service, on each OS in CI.
 
 ## Resource use at rest
 

@@ -5,16 +5,24 @@
 | File | Trigger | Content |
 |---|---|---|
 | `ci.yml` | every push | The `cargo xtask check` steps, on Linux, in six jobs (the window has its own, with the WebKitGTK packages) |
-| `pr.yml` | every PR and every update | `ci.yml`, clippy and tests on macOS and Windows, the window on macOS and Windows, build of the five targets, idle measurement |
+| `pr.yml` | every PR and every update | `ci.yml`, clippy and tests on macOS and Windows, the window on macOS and Windows, build of the five targets, idle measurement, a real update on each OS |
 | `pr-title.yml` | PR opened, updated or retitled | Title convention |
 | `nightly.yml` | every night at 2:17 UTC | Three OSes, five targets, the day's advisories, issue opened on failure |
 | `platforms.yml` | called by `pr.yml` and `nightly.yml` | The OS and target matrix |
+| `bundles.yml` | called by `release.yml`, by hand, or by a PR that changes the bundles | Installers and update files for macOS (two architectures) and Windows |
+| `release.yml` | every push to `main` | Computes the version from the commit titles, builds, signs `update.json`, publishes the GitHub release |
 
 The jobs call `cargo xtask check <step>`. A check is changed in `crates/xtask`, not in the YAML.
 
 On a PR, Linux is already covered by `ci.yml`. The `pr.yml` matrix therefore only reruns macOS and Windows, which cost more per minute. At night, all three OSes run.
 
 The title has its own file because otherwise a corrected title would rerun the full matrix.
+
+## Releases
+
+A squash-merged PR gives `main` one commit, named after the PR title. `feat` publishes a minor version, `fix`, `perf` and `refactor` a patch; `docs`, `ci`, `test`, `build` and `chore` publish nothing. The first version is `0.1.0`.
+
+The release key signs what workstations install. Its private half is the `BANC_RELEASE_KEY` secret of the repository, with a copy to keep in a password manager: if it is lost, every workstation has to be reinstalled by hand with a new public key.
 
 ## GitHub settings to apply once
 
@@ -43,7 +51,7 @@ The plan asks for these checks, but they have nothing to test before the product
 - **End-to-end tests** in containers (`pr.yml`), with a server, a depot and two agents. Until the depot exists (phase 3), the end-to-end scenarios run in-process with `cargo nextest`: `crates/banc-server/tests/enrollment.rs` (server, iroh, relay) and `crates/banc-agent/tests/agent.rs` (a real server and a real agent: enrollment through the local endpoint, connection, restart, revocation). The container job arrives with the depot.
 - **Idle measurement on macOS and Windows.** `idle-bench` reads `/proc`. The session helper's tray icon only exists on those OSes: measured by hand until then (`docs/phase1-checklist.md`).
 - **Long tests** in `nightly.yml`, in phase 3.
-- **`release.yml`**, in phase 7.
+- **Signed and notarized installers**, in phase 7.
 
 ## Cost
 

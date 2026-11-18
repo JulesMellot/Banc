@@ -1,0 +1,71 @@
+# Every merge into main that changes the product publishes a version. The
+# commit titles decide its number: `fix` a patch, `feat` a minor version.
+# Workstations install it by themselves, from the signed update.json.
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# One release at a time: the next one reads the tag of the previous one.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  version:
+    name: Next version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.next.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: ./.github/actions/rust
+      - id: next
+        run: cargo xtask next-version
+
+  bundles:
+    needs: version
+    if: needs.version.outputs.version != ''
+    uses: ./.github/workflows/bundles.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+
+  publish:
+    name: Publish
+    needs: [version, bundles]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/rust
+      - uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+      - name: Sign the description of the version
+        env:
+          BANC_RELEASE_KEY: ${{ secrets.BANC_RELEASE_KEY }}
+        run: cargo xtask sign-release --version "$VERSION" --payloads artifacts --out update.json
+      # Published last: workstations only see a version whose files are all
+      # there.
+      - name: Publish the release
+        run: |
+          gh release create "v$VERSION" --draft --generate-notes --target "$GITHUB_SHA" --title "Banc $VERSION"
+          find artifacts -type f \( -path '*/assets/*' -o -name '*.dmg' -o -name '*-setup.exe' \) -print0 \
+            | xargs -0 -n 20 gh release upload "v$VERSION" --clobber
+          gh release upload "v$VERSION" update.json --clobber
+          gh release edit "v$VERSION" --draft=false --latest

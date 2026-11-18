@@ -31,7 +31,9 @@ The window (`ui/src-tauri`, step `app`) needs the Tauri prerequisites. On Debian
 | `cargo xtask dev-agent` | Agent in the foreground, data in `.dev/agent`, endpoint `.dev/agent.sock` |
 | `cargo xtask dev-ui` | Frontend in development mode, `/api` proxied to the dev server |
 | `cargo xtask dev-app` | The window, connected to the development agent; needs `dev-ui` running |
-| `cargo xtask bundle-app` | The window with the agent and the session helper beside it, for a test machine |
+| `cargo xtask bundle-app` | The window with the agent and the session helper beside it, as an installer |
+| `cargo xtask next-version` | The version the commits since the last tag call for |
+| `cargo xtask update-e2e --build`, then `--run` as administrator | A real update of this machine through the system service |
 | `cargo xtask dist` | Release binaries for the current machine in `dist/<target>/` |
 | `cargo xtask dist --target <target>` | Same for another target, option can be repeated |
 | `packaging/server/smoke-test.sh` | Starts the Compose setup locally and checks it (ports 80 and 443 free) |

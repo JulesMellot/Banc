@@ -46,7 +46,8 @@
             <td>
               {t(`os.${machine.os}`)}
               {machine.arch}<br />
-              <small>{machine.os_version ?? ''}</small>
+              <small>{machine.os_version ?? ''}</small><br />
+              <small>Banc {machine.agent_version}</small>
             </td>
             <td>
               {#if machine.resolve}

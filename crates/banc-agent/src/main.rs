@@ -8,8 +8,10 @@ mod args;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::time::Duration;
 
 use anyhow::Context;
+use banc_agent::update::{self, apply};
 use banc_platform::logging::{self, LogConfig};
 use banc_platform::paths::{self, Scope};
 use banc_platform::secrets::SecretStore;
@@ -17,7 +19,7 @@ use banc_proto::control;
 use banc_proto::local::{InviteInput, Request, Response};
 
 const NAME: &str = env!("CARGO_PKG_NAME");
-const VERSION: &str = env!("CARGO_PKG_VERSION");
+const VERSION: &str = banc_proto::VERSION;
 
 fn main() -> ExitCode {
     match start() {
@@ -72,6 +74,7 @@ fn start() -> anyhow::Result<u32> {
             print("service removed\n")?;
             Ok(0)
         }
+        args::Command::ApplyUpdate(pending) => apply_update(&pending),
         args::Command::Help => print(args::HELP).map(|()| 0),
         args::Command::Version => print(&format!("{NAME} {VERSION}\n")).map(|()| 0),
     }
@@ -109,13 +112,110 @@ fn run(options: args::Options) -> anyhow::Result<()> {
         .context("starting the runtime")?;
 
     tracing::info!(version = VERSION, "agent started");
-    runtime.block_on(banc_agent::run(config, async {
-        if let Err(error) = banc_platform::signal::shutdown().await {
-            tracing::error!("waiting for the shutdown signal: {error}");
+    let updates = if options.service {
+        keep_running();
+        update::Settings::for_this_machine(config.state_dir.clone())?
+    } else {
+        None
+    };
+    runtime.block_on(async {
+        if let Some(settings) = updates {
+            tokio::spawn(update::watch(settings));
         }
-    }))?;
+        banc_agent::run(config, async {
+            if let Err(error) = banc_platform::signal::shutdown().await {
+                tracing::error!("waiting for the shutdown signal: {error}");
+            }
+        })
+        .await
+    })?;
     tracing::info!("agent stopped");
     Ok(())
+}
+
+/// Restart after a failure, tray icon at login. A machine works without
+/// them: a problem here is only logged.
+fn keep_running() {
+    let session = std::env::current_exe().map(|program| {
+        program.with_file_name(format!("banc-session{}", std::env::consts::EXE_SUFFIX))
+    });
+    match session {
+        Ok(session) if session.exists() => {
+            if let Err(error) = banc_platform::service::keep_running(&session) {
+                tracing::warn!("setting up the automatic start: {error}");
+            }
+        }
+        Ok(session) => tracing::debug!(session = %session.display(), "no session helper"),
+        Err(error) => tracing::warn!("locating the session helper: {error}"),
+    }
+}
+
+/// The service as an update sees it.
+struct SystemService {
+    socket: PathBuf,
+    runtime: tokio::runtime::Runtime,
+}
+
+impl apply::Supervisor for SystemService {
+    fn stop(&self) -> std::io::Result<()> {
+        banc_platform::service::stop()
+    }
+
+    fn start(&self) -> std::io::Result<()> {
+        banc_platform::service::start()
+    }
+
+    fn running_version(&self) -> Option<String> {
+        self.runtime.block_on(async {
+            let ask = async {
+                let mut stream = banc_platform::local::connect(&self.socket).await.ok()?;
+                control::write_frame(&mut stream, &Request::Status)
+                    .await
+                    .ok()?;
+                match control::read_frame::<_, Response>(&mut stream)
+                    .await
+                    .ok()??
+                {
+                    Response::Status(status) => Some(status.version),
+                    Response::Error { .. } => None,
+                }
+            };
+            tokio::time::timeout(Duration::from_secs(5), ask)
+                .await
+                .ok()
+                .flatten()
+        })
+    }
+
+    fn wait(&self, duration: Duration) {
+        std::thread::sleep(duration);
+    }
+}
+
+/// Runs from a copy of the old agent, started by the service.
+fn apply_update(pending: &std::path::Path) -> anyhow::Result<u32> {
+    let log = LogConfig::new(paths::log_dir(Scope::System)?, "banc-agent-update");
+    let _log_guard = logging::init(&log)?;
+    let text = std::fs::read(pending).context("reading the update")?;
+    let pending: apply::Pending = serde_json::from_slice(&text).context("reading the update")?;
+    tracing::info!(version = %pending.version, from = VERSION, "applying an update");
+    let service = SystemService {
+        socket: paths::agent_socket(),
+        runtime: tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .context("starting the runtime")?,
+    };
+    let outcome = apply::apply(
+        &pending,
+        &apply::Work::for_root(&pending.root),
+        &service,
+        apply::Timing::REAL,
+        &update::failed_file(&paths::state_dir(Scope::System)?),
+    );
+    tracing::info!(?outcome, "update finished");
+    banc_platform::service::finish_updater();
+    Ok(0)
 }
 
 /// Sends one request to the running agent and prints the answer.

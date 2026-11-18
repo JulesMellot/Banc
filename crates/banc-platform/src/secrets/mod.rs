@@ -1,9 +1,12 @@
 //! Secrets: the machine key of the agent, the admin key of the application.
 //!
-//! macOS: the keychain (System for the service, the user's login keychain
-//! for the application). Windows: the Credential Manager of the account
-//! that runs the process. Linux: files readable by their owner only, in the
-//! data folder; a system service on Linux has no keychain.
+//! macOS: the user's login keychain for the application, and for the
+//! service a file readable by root only: the System keychain ties an entry
+//! to the exact program that created it, and every update of an application
+//! without an Apple certificate is another program. Windows: the Credential
+//! Manager of the account that runs the process. Linux: files readable by
+//! their owner only, in the data folder; a system service on Linux has no
+//! keychain.
 //!
 //! [`SecretStore::in_dir`] keeps files in a chosen folder, on every OS: for
 //! development and tests.

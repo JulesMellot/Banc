@@ -45,6 +45,19 @@ pub(super) fn resolve_facts() -> Vec<ResolveFact> {
         .collect()
 }
 
+/// Asks `tasklist` for the processes with Resolve's image name.
+pub(super) fn resolve_running() -> Option<bool> {
+    let output = std::process::Command::new("tasklist")
+        .args(["/FI", "IMAGENAME eq Resolve.exe", "/FO", "CSV", "/NH"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&output.stdout).to_ascii_lowercase();
+    Some(text.contains("\"resolve.exe\""))
+}
+
 fn wide(text: &str) -> Vec<u16> {
     std::ffi::OsStr::new(text)
         .encode_wide()

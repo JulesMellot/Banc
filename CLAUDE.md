@@ -30,7 +30,7 @@ The full plan, phase by phase, is in `docs/PLAN.md`. Read it before any task. Wo
 - HTTP server: `axum`. Database: SQLite through `rusqlite` (`bundled` feature) and `rusqlite_migration`.
 - Interface: Tauri 2, Svelte + TypeScript frontend. Native system tray icon with `tray-icon` + `tao`, no web view.
 - System services: a systemd unit, a launchd property list and `windows-service`, written by `banc_platform::service` (the `service-manager` crate was dropped in phase 1, see the decisions).
-- Secrets: `keyring-core` with the macOS and Windows stores, owner-only files on Linux. Signatures: Ed25519 through `iroh-base` (`ed25519-dalek` underneath). Updates: `self-replace`.
+- Secrets: `keyring-core` with the macOS and Windows stores, owner-only files for the service on macOS and Linux. Signatures: Ed25519 through `iroh-base` (`ed25519-dalek` underneath). Updates: `banc_agent::update`, signed releases.
 - Logs: `tracing` + `tracing-appender` with rotation.
 - Resolve bridge: embedded Python scripts, run by the session helper only when it needs to talk to Resolve.
 
@@ -62,7 +62,9 @@ Details, with the tools to install, are in `docs/development.md`.
 - `cargo xtask check`: the same checks as CI on every push. Steps: `fmt`, `architecture`, `clippy`, `tests`, `migrations`, `frontend`, `app`, `python`, `deny`, `secrets`, `commits`. `cargo xtask check clippy tests` only runs the steps listed. The `app` step builds the Tauri window: on Linux it needs the WebKitGTK packages (`docs/development.md`).
 - `cargo xtask dev-server`, `cargo xtask dev-agent`, `cargo xtask dev-ui`, `cargo xtask dev-app` (the server serves `ui/dist`: run `pnpm build` in `ui/` first, or use `dev-ui`, which proxies `/api` to the server; `dev-app` needs `dev-ui` running)
 - `packaging/server/smoke-test.sh`: checks the server's Docker image and Compose setup locally (ports 80 and 443 free)
-- `cargo xtask bundle-app`: the window with the agent and the session helper beside it, as an application for a test machine (unsigned, until phase 7)
+- `cargo xtask bundle-app`: the window with the agent and the session helper beside it, as an installer (ad-hoc signed on macOS). `--version` numbers it, `--payload <dir>` also writes the files of an update
+- `cargo xtask next-version`: the version the commits since the last tag call for
+- `cargo xtask update-e2e --build`, then `--run` with administrator rights: a real update on this machine, through the system service
 - `cargo nextest run --workspace` for the tests alone
 - `cargo xtask schema` after adding a migration, then review the diff of `migrations/schema.sql`
 - `cargo xtask dist`: release binaries for the current machine in `dist/<target>/`, `--target <target>` for another target. Installers arrive in phase 7.
@@ -98,8 +100,8 @@ Phase 1 decisions (server side):
 - **Server in Docker**: one image, `ghcr.io/julesmellot/banc-server` (amd64, arm64), published from `main` by the `Server image` workflow and never compiled on the server, because a 2 GB VPS cannot afford the fat LTO build. `docker-compose.yml` at the root deploys it from the public Git repository on Coolify or Dokploy, with nothing to fill in. `packaging/server/README.md` has the steps; `packaging/server/compose.yaml` is the plain VPS setup, with Caddy for TLS.
 - **Public address learned**: without `public_url` in the configuration, the server keeps the HTTPS address of the request that creates the first admin (`server_settings` table). That request carries the setup token, so an outsider cannot choose the address. `BANC_DOMAIN` overrides it.
 - **One HTTP port**: the API port also forwards the relay's paths to the relay's local listener (`banc_server::relay_proxy`), since a hosting platform routes one domain to one port. UDP 443 is optional, Coolify's proxy may hold it: without it, agents reach the server through the relay.
-- **Mac and Windows builds** come from the `Bundles` workflow (GitHub runners): the window cannot be cross-compiled from Linux. Ad-hoc signed on macOS until phase 7.
-- **Server key in a file** (`data_dir/server.key`, 0600, written by `banc_platform::fs::write_private`): no keychain on the VPS. Workstation secrets still go to the keychain.
+- **Mac and Windows builds** come from the `Bundles` workflow (GitHub runners), called by `Release`: the window cannot be cross-compiled from Linux. Ad-hoc signed on macOS until phase 7.
+- **Server key in a file** (`data_dir/server.key`, 0600, written by `banc_platform::fs::write_private`): no keychain on the VPS. Workstation secrets follow the machine key decision below.
 - **First admin** through a one-time token written to `data_dir/setup-token`, never logged.
 - **Admin passwords** argon2id (crate defaults), sessions of 12 hours, token hash only in the database. TOTP is not done yet.
 - **Invitation key to copy**: `<token>-<fingerprint>`, both base32. Fingerprint: 16 bytes of a BLAKE3 key derivation of the admin public key.
@@ -111,7 +113,7 @@ Phase 1 decisions (workstation side):
 
 - **The agent is enrolled through its local endpoint** (`banc_proto::local`): a Unix socket (`/run/banc/agent.sock`, `/var/run/banc/agent.sock`) or the named pipe `\\.\pipe\banc-agent`, open to every local user. Two requests only: status, and enrollment, which works once. The window, the tray icon and `banc-agent enroll` (depot, tests) all go through it.
 - **The agent checks the server's admin key against the invitation's fingerprint** before storing anything. A refusal leaves no file and no key.
-- **Machine key** in the secret store under `machine-key`: System keychain on macOS, Credential Manager of LocalSystem on Windows, `/var/lib/banc/secrets/` (root, 0600) on Linux. With `--state-dir` (development, tests), files in that folder.
+- **Machine key** in the secret store under `machine-key`: `/Library/Application Support/Banc/secrets/` (root, 0600) on macOS, Credential Manager of LocalSystem on Windows, `/var/lib/banc/secrets/` (root, 0600) on Linux. The macOS System keychain ties an entry to the exact program that created it, and without an Apple certificate every update is another program: the machine would lose its identity at each version. To reconsider with the Developer ID certificate of phase 7. With `--state-dir` (development, tests), files in that folder.
 - **Service registration without `service-manager`**: a unit file, a plist and one SCM call did not justify `plist`, `dirs`, `which` and `xml-rs` in the agent. `windows-service` also provides the SCM dispatcher; `--service` runs the agent under it.
 - **The window is its own Cargo workspace** (`ui/src-tauri`, `exclude` in the root `Cargo.toml`), with its own `Cargo.lock` and `deny.toml` (MPL-2.0 allowed crate by crate for the web engine's CSS parser). The same frontend is the web admin in a browser and the window in Tauri (`inWindow()`).
 - **Admin key**: generated by the window, kept in the user's keychain under `admin-key`, written down as a **recovery code** (Crockford base32, 11 groups of 5, 2-byte checksum) rather than a word list, which would have needed a word list license. The admin types the last group back before the key is stored.
@@ -120,6 +122,9 @@ Phase 1 decisions (workstation side):
 - **Interface text outside the web frontend**: the session helper reads the same `fr.json` (`include_str!`).
 - **Release profile optimized for size** (`opt-level = "s"`, fat LTO), except argon2, blake2 and blake3: the agent's code pages count in its resident memory. Agent binary 13 MB to 7.5 MB, enrolled agent 14.1 MB to 10.2 MB.
 - **iroh keep-alives**: a connected agent wakes up about twice a minute (QUIC keep-alive every 5 s per path, relay ping every 15 s), 0.03% CPU. iroh's defaults are kept: they keep NAT mappings open for phase 3's peer-to-peer. `QuicTransportConfig` is the knob if it ever matters on laptops.
+- **Automatic updates** (`banc_agent::update`): every hour the agent reads `update.json` from the GitHub releases, signed with the release key (domain `banc/update/1`, public half in `crates/banc-proto/release-key.pub`, private half in the `BANC_RELEASE_KEY` secret of the repository). Only a strictly newer version is accepted. Files are checked with BLAKE3, wait for Resolve to close, and are installed by a copy of the old agent running outside the service, which puts the old version back if the new one does not answer within 2 minutes.
+- **Releases are automatic** (`.github/workflows/release.yml`): a merge into `main` whose title is `feat`, `fix`, `perf` or `refactor` publishes a version. The number lives in the `vX.Y.Z` tags and reaches the programs through `BANC_VERSION` at build time: `Cargo.toml` stays at `0.0.0`, and a `0.0.0` build never updates itself.
+- **Always running**: `banc_platform::service::keep_running`, called at every start of the service, makes the service restart after a failure and starts the tray icon at login (a launchd agent on macOS, the `Run` key on Windows). The window stays a process that ends when it closes.
 - **Resolve edition unknown until Resolve answers**: Studio installs as "DaVinci Resolve" on macOS and Windows, so the installed files cannot tell it from the free edition. `ResolveInstall::edition` is `None` rather than a guess.
 - **`cargo deny`**: tao lists GTK for Linux although it is only a macOS and Windows dependency here; the gtk tree is skipped with that reason.
 
@@ -140,7 +145,7 @@ Details are in section 15 of `docs/PLAN.md`. To be followed every time:
 - No `unwrap()` or `expect()` outside tests and startup. Errors with `thiserror` in libraries, `anyhow` in binaries.
 - Every action that modifies the workstation writes a line to the local log and reports to the server.
 - A downloaded file is verified by its BLAKE3 hash before it is moved into place or executed. A file that does not match is deleted.
-- Secrets go into the OS keychain, never into a plain-text file.
+- Secrets go into the OS keychain, never into a plain-text file. The one exception is the machine key of the service on macOS and Linux, in a file only root can read (see the decisions).
 - Interface text is in French, in `ui/src/lib/i18n/fr.json`. Everything else (code, comments, logs, errors, command-line help, tests, docs, commits) is in English.
 - Every function that compares a local state with a manifest or a file list has tests. This is the heart of the product.
 - Every write to a private Resolve file (preferences, library list) goes through `banc-resolve`, happens with Resolve closed, keeps a backup copy, and first checks that the format is the expected one. If the format has changed, write nothing and switch to guided mode.

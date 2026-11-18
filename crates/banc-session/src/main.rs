@@ -10,7 +10,7 @@ mod text;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::ExitCode;
-use std::time::Duration;
+use std::time::{Duration, Instant, SystemTime};
 
 use anyhow::Context;
 use banc_platform::logging::{self, LogConfig};
@@ -22,9 +22,11 @@ use banc_proto::local::{AgentStatus, Request, Response};
 use crate::text::Text;
 
 const NAME: &str = env!("CARGO_PKG_NAME");
-const VERSION: &str = env!("CARGO_PKG_VERSION");
+const VERSION: &str = banc_proto::VERSION;
 /// How often the icon asks the agent for its state.
 const REFRESH: Duration = Duration::from_secs(60);
+/// How long a new helper waits for the previous one to end.
+const LOCK_WAIT: Duration = Duration::from_secs(5);
 /// The tray icon, 32×32 RGBA.
 static ICON: &[u8] = include_bytes!("../icons/tray-32.rgba");
 
@@ -58,6 +60,10 @@ fn run() -> anyhow::Result<()> {
     let mut log = LogConfig::new(log_dir, NAME);
     log.stderr = options.stderr;
     let _log_guard = logging::init(&log)?;
+    let Some(_instance) = single_instance()? else {
+        tracing::debug!("the session helper is already running");
+        return Ok(());
+    };
     tracing::info!(version = VERSION, "session helper started");
 
     let socket = options.socket.unwrap_or_else(paths::agent_socket);
@@ -68,7 +74,9 @@ fn run() -> anyhow::Result<()> {
         open_label: text.get("tray.open"),
         quit_label: text.get("tray.quit"),
     };
+    let started_from = program_date();
     let status = move || {
+        restart_if_updated(started_from);
         let socket = socket.clone();
         let text = Text::load();
         async move { text.status_line(agent_status(&socket).await.as_ref()) }
@@ -89,6 +97,49 @@ fn run() -> anyhow::Result<()> {
     }
     tracing::info!("session helper stopped");
     Ok(())
+}
+
+/// One tray icon per session. `None` if another helper holds the lock. The
+/// operating system releases it when the process ends, however it ends.
+fn single_instance() -> anyhow::Result<Option<std::fs::File>> {
+    let dir = paths::state_dir(Scope::User)?;
+    std::fs::create_dir_all(&dir).context("creating the data folder")?;
+    let file = std::fs::File::create(dir.join("session.lock")).context("creating the lock")?;
+    let start = Instant::now();
+    loop {
+        match file.try_lock() {
+            Ok(()) => return Ok(Some(file)),
+            Err(std::fs::TryLockError::WouldBlock) if start.elapsed() < LOCK_WAIT => {
+                std::thread::sleep(Duration::from_millis(200));
+            }
+            Err(std::fs::TryLockError::WouldBlock) => return Ok(None),
+            Err(std::fs::TryLockError::Error(error)) => {
+                return Err(error).context("locking the session helper");
+            }
+        }
+    }
+}
+
+/// When the program on disk was written.
+fn program_date() -> Option<SystemTime> {
+    std::fs::metadata(std::env::current_exe().ok()?)
+        .ok()?
+        .modified()
+        .ok()
+}
+
+/// An update replaced the program on disk: starts the new one.
+fn restart_if_updated(started_from: Option<SystemTime>) {
+    let Some(now) = program_date() else {
+        // Being replaced right now: seen at the next refresh.
+        return;
+    };
+    if started_from.is_some_and(|date| date != now) {
+        tracing::info!("the session helper was updated, restarting");
+        if let Err(error) = banc_platform::process::restart() {
+            tracing::error!("restarting the session helper: {error}");
+        }
+    }
 }
 
 /// The agent's state, `None` if it does not answer.

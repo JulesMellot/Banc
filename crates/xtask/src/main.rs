@@ -9,6 +9,8 @@ mod check;
 mod cmd;
 mod commits;
 mod dist;
+mod release;
+mod update_e2e;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -62,8 +64,41 @@ enum Command {
         #[arg(long = "target")]
         targets: Vec<String>,
     },
-    /// Bundles the window with the agent and the session helper, for a test machine
-    BundleApp,
+    /// Bundles the window with the agent and the session helper
+    BundleApp {
+        /// Version number of the bundle. Default: a development build
+        #[arg(long)]
+        version: Option<String>,
+        /// Also writes the files of an update into this folder
+        #[arg(long)]
+        payload: Option<PathBuf>,
+    },
+    /// Prints the version the commits since the last tag call for, if any
+    NextVersion,
+    /// Creates a release key (private half in a file, public half in the repository)
+    ReleaseKey {
+        /// Where to write the private key
+        #[arg(long)]
+        out: PathBuf,
+    },
+    /// Signs the description of a version, with the key in BANC_RELEASE_KEY
+    SignRelease {
+        #[arg(long)]
+        version: String,
+        /// Folder holding the payload of each platform
+        #[arg(long)]
+        payloads: PathBuf,
+        /// The file to write
+        #[arg(long)]
+        out: PathBuf,
+    },
+    /// Real update on this machine: --build, then --run with administrator rights
+    UpdateE2e {
+        #[arg(long)]
+        build: bool,
+        #[arg(long)]
+        run: bool,
+    },
     /// Runs the window in development (with `cargo xtask dev-ui` and `dev-agent`)
     DevApp,
     /// Measures the agent and the session helper at rest (Linux)
@@ -136,7 +171,30 @@ fn execute() -> anyhow::Result<()> {
             run(dev.arg("dev").current_dir(&ui))
         }
         Command::Dist { targets } => dist::dist(&root, &targets),
-        Command::BundleApp => dist::bundle_app(&root),
+        Command::BundleApp { version, payload } => {
+            dist::bundle_app(&root, version.as_deref(), payload.as_deref())
+        }
+        Command::NextVersion => release::print_next_version(&root),
+        Command::ReleaseKey { out } => release::new_key(&root, &out),
+        Command::SignRelease {
+            version,
+            payloads,
+            out,
+        } => {
+            let key = std::env::var(release::KEY_VARIABLE)
+                .with_context(|| format!("{} is not set", release::KEY_VARIABLE))?;
+            let secret = release::parse_secret(&key)?;
+            release::sign_manifest(&payloads, version.parse()?, &secret, &out)
+        }
+        Command::UpdateE2e { build, run } => {
+            if build {
+                update_e2e::build(&root)?;
+            }
+            if run {
+                update_e2e::run_scenario(&root)?;
+            }
+            Ok(())
+        }
         Command::DevApp => {
             let mut command = cmd::cargo(&["run"]);
             command

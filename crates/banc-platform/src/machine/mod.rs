@@ -49,6 +49,12 @@ pub fn resolve_facts() -> Vec<ResolveFact> {
     os::resolve_facts()
 }
 
+/// Whether DaVinci Resolve is running. When the OS cannot tell, the answer
+/// is yes: the caller is about to do something that must wait for Resolve.
+pub fn resolve_running() -> bool {
+    os::resolve_running().unwrap_or(true)
+}
+
 /// Value of `KEY=value` or `KEY="value"` in an `os-release` style file.
 pub fn key_value<'a>(text: &'a str, key: &str) -> Option<&'a str> {
     text.lines().find_map(|line| {
@@ -80,6 +86,7 @@ mod tests {
         assert!(["macos", "windows", "linux"].contains(&OS));
         // Reading must not fail on a machine without Resolve.
         let _ = resolve_facts();
+        let _ = resolve_running();
         let _ = os_version();
     }
 }
