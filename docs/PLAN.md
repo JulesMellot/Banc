@@ -15,7 +15,8 @@ Updated 2026-11-17.
 | Prototypes P3 to P10 | Not started. |
 | Phase 1, server side | Done (PR #5): enrollment, invitations, machines, admin accounts, admin key registration, iroh endpoint with the control channel, relay restricted to the team, minimal web admin. See `docs/server.md`. |
 | Phase 1, workstation side | Coded and tested in CI: agent (machine key, enrollment, connection, heartbeat, inventory, Resolve detection, system service), window (`banc://` link, joining, workstation state, admin key with recovery code), session helper (tray icon on macOS and Windows), `idle-bench` extended. See `docs/workstation.md`. **Hand test on the three OSes pending**: `docs/phase1-checklist.md`. |
-| Phases 2 to 6 and 8 | Not started. |
+| Phase 2, signed manifest | Started: manifest format, signature and comparison with the workstation. Remaining: package store, editor, delivery to the agents, installers (needs prototype P9), machines-by-packages grid. |
+| Phases 3 to 6 and 8 | Not started. |
 | Phase 7, distribution and updates | Started ahead of plan: signed automatic updates with rollback, automatic releases, start at login. Remaining: signed and notarized installers, `.deb`, `.rpm`, AppImage, depot image, nightly backup. |
 
 Phase 1 acceptance criteria, against what exists:

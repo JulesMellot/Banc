@@ -10,6 +10,7 @@
 pub mod control;
 pub mod enroll;
 pub mod local;
+pub mod packages;
 pub mod state;
 pub mod update;
 

@@ -11,6 +11,7 @@ pub mod invite;
 pub mod keys;
 pub mod local;
 pub mod machine;
+pub mod manifest;
 mod text;
 pub mod update;
 

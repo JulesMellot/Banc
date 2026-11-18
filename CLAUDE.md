@@ -128,6 +128,11 @@ Phase 1 decisions (workstation side):
 - **Resolve edition unknown until Resolve answers**: Studio installs as "DaVinci Resolve" on macOS and Windows, so the installed files cannot tell it from the free edition. `ResolveInstall::edition` is `None` rather than a guess.
 - **`cargo deny`**: tao lists GTK for Linux although it is only a macOS and Windows dependency here; the gtk tree is skipped with that reason.
 
+Phase 2 decisions:
+
+- **Manifest** (`banc_proto::manifest`): the exact signed bytes travel with their signature (domain `banc/manifest/1`), and nothing is read before the signature is checked against the admin key recorded at enrollment. An older version than the one applied is refused. The Resolve edition is not part of it: the installed files cannot tell it.
+- **Comparison with the workstation** (`banc_agent::packages`): pure decisions. Banc removes only what it installed, leaves someone else's install in place, imposes only required packages, and changes nothing while Resolve is open.
+
 ## Commits and CI
 
 Details are in section 15 of `docs/PLAN.md`. To be followed every time:
