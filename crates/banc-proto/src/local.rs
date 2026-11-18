@@ -5,7 +5,8 @@
 //! `control::read_frame`. One request, one response, per connection.
 //!
 //! Nothing here runs a command on the workstation: the requests are the
-//! enrollment, which only works once, and reading the status.
+//! enrollment, which only works on a machine without a team, and reading the
+//! status.
 
 use serde::{Deserialize, Serialize};
 
@@ -16,7 +17,8 @@ use crate::machine::{Inventory, MachineRole, PersonRole};
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Request {
     Status,
-    /// Join a team. Refused if the machine is already enrolled.
+    /// Join a team. Refused while the machine belongs to one: it must have
+    /// never joined, or have been revoked by the server.
     Enroll {
         invite: InviteInput,
         /// Name shown in the admin. Default: the computer name.

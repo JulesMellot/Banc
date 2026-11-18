@@ -108,6 +108,12 @@ impl Shared {
         *lock(&self.connection) = state;
     }
 
+    /// Whether this machine can join a team: it belongs to none, or the
+    /// server has confirmed that it was removed from its team.
+    pub fn can_enroll(&self) -> bool {
+        self.enrolled().is_none() || *lock(&self.connection) == ConnectionState::Revoked
+    }
+
     pub fn status(&self) -> AgentStatus {
         let connection = *lock(&self.connection);
         AgentStatus {
@@ -160,6 +166,7 @@ impl Shared {
             admin_key = %Fingerprint::of(&enrolled.admin_key),
             "machine enrolled"
         );
+        self.set_connection(ConnectionState::Connecting);
         self.enrollment.send_replace(Some((enrolled, key)));
         Ok(())
     }
@@ -199,9 +206,17 @@ pub async fn run(config: Config, shutdown: impl Future<Output = ()>) -> anyhow::
         endpoint = Some(bound.clone());
         tokio::select! {
             () = control::maintain(&bound, &enrolled, &shared) => {
-                // Revoked: nothing left to do but wait.
-                (&mut shutdown).await;
-                break Ok(());
+                // Revoked: nothing left to do until a new invitation.
+                tokio::select! {
+                    changed = receiver.changed() => {
+                        bound.close().await;
+                        endpoint = None;
+                        if changed.is_err() {
+                            break Ok(());
+                        }
+                    }
+                    () = &mut shutdown => break Ok(()),
+                }
             }
             () = &mut shutdown => break Ok(()),
         }
