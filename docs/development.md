@@ -34,6 +34,7 @@ The window (`ui/src-tauri`, step `app`) needs the Tauri prerequisites. On Debian
 | `cargo xtask bundle-app` | The window with the agent and the session helper beside it, for a test machine |
 | `cargo xtask dist` | Release binaries for the current machine in `dist/<target>/` |
 | `cargo xtask dist --target <target>` | Same for another target, option can be repeated |
+| `packaging/server/smoke-test.sh` | Starts the Compose setup locally and checks it (ports 80 and 443 free) |
 | `cargo xtask idle-bench` | Memory and CPU at rest, on Linux: agent alone, agent enrolled, session helper |
 | `cargo xtask pr-title "<title>"` | Checks a PR title |
 

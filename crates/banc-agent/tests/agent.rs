@@ -87,6 +87,39 @@ impl Server {
     }
 }
 
+impl Server {
+    /// A server as a hosting platform runs it: one HTTP port, carrying the
+    /// API and the relay, and no direct iroh address given to the agents.
+    async fn start_relay_only() -> Self {
+        let dir = tempfile::tempdir().unwrap();
+        let port = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let text = format!(
+            "data_dir = '{}'\npublic_url = \"http://localhost:{port}\"\n\
+             [http]\nlisten = \"127.0.0.1:{port}\"\n\
+             [iroh]\nlisten = \"127.0.0.1:0\"\n\
+             [relay]\nlisten = \"127.0.0.1:0\"\n",
+            dir.path().join("data").display()
+        );
+        let config = ServerConfig::parse(&text, dir.path()).unwrap();
+        let running = server::start(&config, Arc::new(|| NOW)).await.unwrap();
+        let admin_key = SecretKey::generate();
+        {
+            let mut db = running.state.db();
+            store::create_admin(&db, "jules", "hash", NOW).unwrap();
+            store::set_admin_key(&mut db, &admin_key.public(), 1, NOW).unwrap();
+        }
+        Self {
+            _dir: dir,
+            running,
+            admin_key,
+        }
+    }
+}
+
 struct Agent {
     task: JoinHandle<anyhow::Result<()>>,
     stop: oneshot::Sender<()>,
@@ -212,6 +245,24 @@ async fn enroll_connect_restart_revoke() {
         .unwrap();
     server.running.state.connections.disconnect(&key);
     agent.wait_connection(Connection::Revoked).await;
+
+    agent.stop().await;
+    server.running.shutdown().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn connects_through_the_relay_on_the_http_port() {
+    let server = Server::start_relay_only().await;
+    assert!(server.running.state.server_info().direct_addrs.is_empty());
+    let dir = tempfile::tempdir().unwrap();
+    let agent = Agent::start(dir.path());
+
+    let answer = agent.ask(&enroll_link(&server.invite(1))).await;
+    assert!(matches!(answer, Response::Status(_)), "{answer:?}");
+    agent.wait_connection(Connection::Connected).await;
+
+    let key = server.machines()[0].public_key.parse().unwrap();
+    assert!(server.running.state.connections.is_connected(&key));
 
     agent.stop().await;
     server.running.shutdown().await.unwrap();

@@ -1,7 +1,8 @@
 //! State shared by the HTTP API, the control channel and the relay.
 
+use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock, RwLock};
 
 use banc_proto::enroll::ServerInfo;
 use rusqlite::Connection;
@@ -24,10 +25,11 @@ pub fn system_clock() -> Clock {
 pub struct AppState {
     db: Mutex<Connection>,
     clock: Clock,
-    /// Base URL written into invitation links.
-    pub public_url: String,
-    /// How agents reach the server over iroh.
-    pub server_info: ServerInfo,
+    /// Base URL written into invitation links, and how agents reach the
+    /// server over iroh.
+    public: RwLock<Public>,
+    /// The relay is served at the public address.
+    relay_follows_public_url: bool,
     /// One-time token that allows creating the first admin, `None` once an
     /// admin exists.
     pub setup: Mutex<Option<SetupToken>>,
@@ -35,6 +37,13 @@ pub struct AppState {
     pub connections: Registry,
     /// Built web admin, served on every path outside the API.
     pub admin_ui: Option<PathBuf>,
+    /// Local address of the relay, once it has started.
+    pub relay_addr: OnceLock<SocketAddr>,
+}
+
+struct Public {
+    url: Option<String>,
+    info: ServerInfo,
 }
 
 /// The first-admin token and the file it was written to.
@@ -47,19 +56,53 @@ impl AppState {
     pub fn new(
         db: Connection,
         clock: Clock,
-        public_url: String,
+        public_url: Option<String>,
         server_info: ServerInfo,
+        relay_follows_public_url: bool,
         admin_ui: Option<PathBuf>,
     ) -> Self {
         Self {
             db: Mutex::new(db),
             clock,
-            public_url,
-            server_info,
+            public: RwLock::new(Public {
+                url: public_url,
+                info: server_info,
+            }),
+            relay_follows_public_url,
             setup: Mutex::new(None),
             connections: Registry::default(),
             admin_ui,
+            relay_addr: OnceLock::new(),
         }
+    }
+
+    /// The server's public address, `None` until it is known.
+    pub fn public_url(&self) -> Option<String> {
+        self.public
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .url
+            .clone()
+    }
+
+    pub fn server_info(&self) -> ServerInfo {
+        self.public
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .info
+            .clone()
+    }
+
+    /// Starts using a public address learned while running.
+    pub fn adopt_public_url(&self, url: String) {
+        let mut public = self
+            .public
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if self.relay_follows_public_url {
+            public.info.relay_url = Some(url.clone());
+        }
+        public.url = Some(url);
     }
 
     pub fn now(&self) -> i64 {

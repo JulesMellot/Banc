@@ -33,13 +33,21 @@ jobs:
           cache-key: release
       - run: cargo xtask idle-bench
 
+  server-image:
+    name: Server image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: docker build -f packaging/server/Dockerfile -t banc-server:latest .
+      - run: packaging/server/smoke-test.sh
+
   # To be wired up once the product exists (see docs/ci.md):
   # end-to-end integration tests, server + depot + two agents.
 
   ready:
     name: PR ready
     if: always()
-    needs: [ci, platforms, idle]
+    needs: [ci, platforms, idle, server-image]
     runs-on: ubuntu-latest
     steps:
       - name: Check that all checks succeeded

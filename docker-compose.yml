@@ -1,0 +1,26 @@
+# The Banc server, for platforms that deploy a public Git repository
+# (Coolify, Dokploy and the like). Nothing to set: give the `banc` service a
+# domain on port 8080 and deploy. Steps: packaging/server/README.md.
+services:
+  banc:
+    image: ghcr.io/julesmellot/banc-server:latest
+    restart: unless-stopped
+    environment:
+      # Tells Coolify which port of the service receives the domain.
+      - SERVICE_URL_BANC_8080
+      # Optional: the server otherwise learns its address from the first admin.
+      - BANC_DOMAIN=${BANC_DOMAIN:-}
+    expose:
+      - "8080"
+    volumes:
+      - banc-data:/var/lib/banc
+    tmpfs:
+      - /run/banc:uid=10001,gid=10001,mode=0700
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  banc-data:

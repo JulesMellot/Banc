@@ -61,6 +61,7 @@ Details, with the tools to install, are in `docs/development.md`.
 
 - `cargo xtask check`: the same checks as CI on every push. Steps: `fmt`, `architecture`, `clippy`, `tests`, `migrations`, `frontend`, `app`, `python`, `deny`, `secrets`, `commits`. `cargo xtask check clippy tests` only runs the steps listed. The `app` step builds the Tauri window: on Linux it needs the WebKitGTK packages (`docs/development.md`).
 - `cargo xtask dev-server`, `cargo xtask dev-agent`, `cargo xtask dev-ui`, `cargo xtask dev-app` (the server serves `ui/dist`: run `pnpm build` in `ui/` first, or use `dev-ui`, which proxies `/api` to the server; `dev-app` needs `dev-ui` running)
+- `packaging/server/smoke-test.sh`: checks the server's Docker image and Compose setup locally (ports 80 and 443 free)
 - `cargo xtask bundle-app`: the window with the agent and the session helper beside it, as an application for a test machine (unsigned, until phase 7)
 - `cargo nextest run --workspace` for the tests alone
 - `cargo xtask schema` after adding a migration, then review the diff of `migrations/schema.sql`
@@ -78,7 +79,7 @@ Phase 0 is done. Prototypes P1 and P2 have their procedure, waiting to be run by
 - **Logs**: `banc_platform::logging`, one file per day. The write queue is limited to 1,024 lines; the default cost 4 MB at rest.
 - **`tracing` without the `#[instrument]` macro**: it pulls in `tracing-attributes` and more proc-macro code. iroh already brings `syn` 3 next to `syn` 2 (skip in `deny.toml`); do not add a third reason to keep both.
 - **Migrations**: `migrations/NNNN_name.sql` files, embedded in `banc-server`. `migrations/schema.sql` keeps the resulting schema and CI compares it. `0001_enrollment.sql`: admins, sessions, team admin key, invitations, machines, events.
-- **Server configuration**: `banc_server::config`, commented example in `packaging/server/banc-server.toml`. An unknown key is refused. `public_url` is required.
+- **Server configuration**: `banc_server::config`, commented example in `packaging/server/banc-server.toml`. An unknown key is refused.
 - **Tauri window**: no `ui/src-tauri` crate yet. It would require webkit2gtk in every Linux CI job. `ui/` contains the Svelte frontend alone, which is for now the web admin served by the server (`http.admin_ui`).
 - **TypeScript 6**: `svelte-check` and `typescript-eslint` do not accept version 7 yet.
 - **Commit scope** optional for the `docs`, `build`, `ci` and `chore` types. `Refs:` line required. Dependabot commits exempt.
@@ -94,7 +95,10 @@ Phase 1 decisions (server side):
 - **Enrollment over HTTPS**, signed with the machine key. The relay and the control channel only accept enrolled keys, so an unenrolled machine has nothing but HTTPS.
 - **Control channel**: one iroh connection per agent, ALPN `banc/control/1`, length-prefixed JSON frames (64 KB max), heartbeat every 5 minutes. The server can push on it later; it carries data, never commands.
 - **Relay** run inside the server (`iroh-relay` with the `server` feature), with an access check against the `machines` table. The server joins it through its local address, agents through the public URL.
-- **TLS terminated in front** of the server (example `packaging/server/Caddyfile`). The plan's "certificate obtained by the server" moves to phase 7.
+- **Server in Docker**: one image, `ghcr.io/julesmellot/banc-server` (amd64, arm64), published from `main` by the `Server image` workflow and never compiled on the server, because a 2 GB VPS cannot afford the fat LTO build. `docker-compose.yml` at the root deploys it from the public Git repository on Coolify or Dokploy, with nothing to fill in. `packaging/server/README.md` has the steps; `packaging/server/compose.yaml` is the plain VPS setup, with Caddy for TLS.
+- **Public address learned**: without `public_url` in the configuration, the server keeps the HTTPS address of the request that creates the first admin (`server_settings` table). That request carries the setup token, so an outsider cannot choose the address. `BANC_DOMAIN` overrides it.
+- **One HTTP port**: the API port also forwards the relay's paths to the relay's local listener (`banc_server::relay_proxy`), since a hosting platform routes one domain to one port. UDP 443 is optional, Coolify's proxy may hold it: without it, agents reach the server through the relay.
+- **Mac and Windows builds** come from the `Bundles` workflow (GitHub runners): the window cannot be cross-compiled from Linux. Ad-hoc signed on macOS until phase 7.
 - **Server key in a file** (`data_dir/server.key`, 0600, written by `banc_platform::fs::write_private`): no keychain on the VPS. Workstation secrets still go to the keychain.
 - **First admin** through a one-time token written to `data_dir/setup-token`, never logged.
 - **Admin passwords** argon2id (crate defaults), sessions of 12 hours, token hash only in the database. TOTP is not done yet.

@@ -9,6 +9,7 @@ pub mod config;
 pub mod control;
 pub mod db;
 pub mod relay;
+pub mod relay_proxy;
 pub mod server;
 pub mod state;
 pub mod store;

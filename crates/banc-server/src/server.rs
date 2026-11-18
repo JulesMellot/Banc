@@ -1,7 +1,7 @@
 //! Starts and stops the server's parts: HTTP API, iroh endpoint with the
 //! control channel, relay.
 
-use std::net::SocketAddr;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::path::Path;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -53,17 +53,29 @@ pub async fn start(config: &Config, clock: Clock) -> anyhow::Result<Running> {
         None
     };
 
+    // The configuration wins over an address learned earlier.
+    let public_url = match &config.public_url {
+        Some(url) => Some(url.clone()),
+        None => store::public_url(&conn)?,
+    };
+    let relay_follows_public_url = config.relay.enabled && config.relay.url.is_none();
+    let relay_url = config.relay_url().or_else(|| {
+        relay_follows_public_url
+            .then(|| public_url.clone())
+            .flatten()
+    });
     let server_info = ServerInfo {
         version: VERSION.to_owned(),
         endpoint_id,
-        relay_url: config.relay_url(),
+        relay_url,
         direct_addrs: config.iroh.public_addrs.clone(),
     };
     let state = Arc::new(AppState::new(
         conn,
         clock,
-        config.public_url.clone(),
+        public_url,
         server_info,
+        relay_follows_public_url,
         config.http.admin_ui.clone(),
     ));
     prepare_setup(&state, &config.data_dir)?;
@@ -77,13 +89,16 @@ pub async fn start(config: &Config, clock: Clock) -> anyhow::Result<Running> {
         None => None,
     };
     let relay_addr = relay.as_ref().and_then(|relay| relay.http_addr());
+    if let Some(addr) = relay_addr {
+        // Set once, on a state nobody else holds yet.
+        let _ = state.relay_addr.set(addr);
+    }
 
     // The server reaches its own relay locally; agents use the public URL.
     // Both lead to the same relay process.
     let relay_mode = match relay_addr {
         Some(addr) => {
-            let url =
-                RelayUrl::from_str(&format!("http://{addr}")).context("local relay address")?;
+            let url = RelayUrl::from_str(&local_relay_url(addr)).context("local relay address")?;
             RelayMode::Custom(RelayMap::from(url))
         }
         None => RelayMode::Disabled,
@@ -162,6 +177,17 @@ impl Running {
     }
 }
 
+/// Where the server reaches its own relay. A relay listening on every
+/// interface, as in a container, is reached over the loopback.
+fn local_relay_url(addr: SocketAddr) -> String {
+    let ip = match addr.ip() {
+        IpAddr::V4(ip) if ip.is_unspecified() => IpAddr::V4(Ipv4Addr::LOCALHOST),
+        IpAddr::V6(ip) if ip.is_unspecified() => IpAddr::V6(Ipv6Addr::LOCALHOST),
+        ip => ip,
+    };
+    format!("http://{}", SocketAddr::new(ip, addr.port()))
+}
+
 /// The server's iroh key, created at the first start. The VPS has no
 /// keychain: the key lives in a file readable by the server's account only.
 fn load_or_create_key(path: &Path) -> anyhow::Result<SecretKey> {
@@ -203,8 +229,25 @@ fn prepare_setup(state: &AppState, data_dir: &Path) -> anyhow::Result<()> {
     });
     tracing::warn!(
         file = %file.display(),
-        url = %state.public_url,
+        url = state.public_url().as_deref().unwrap_or("not known yet"),
         "no admin yet: open the web admin and enter the token from this file"
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn local_relay_address() {
+        for (listen, url) in [
+            ("127.0.0.1:3340", "http://127.0.0.1:3340"),
+            ("0.0.0.0:3340", "http://127.0.0.1:3340"),
+            ("[::]:3340", "http://[::1]:3340"),
+            ("10.0.0.2:3340", "http://10.0.0.2:3340"),
+        ] {
+            assert_eq!(local_relay_url(listen.parse().unwrap()), url, "{listen}");
+        }
+    }
 }

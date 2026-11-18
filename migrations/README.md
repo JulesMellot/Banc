@@ -12,4 +12,4 @@ cargo xtask schema
 
 Review the diff of `schema.sql` before committing. `cargo xtask check migrations` fails if the file no longer matches the migrations.
 
-The target data model is described in section 3 of `docs/PLAN.md`. `0001_enrollment.sql` holds the phase 1 tables.
+The target data model is described in section 3 of `docs/PLAN.md`. `0001_enrollment.sql` and `0002_public_url.sql` hold the phase 1 tables.

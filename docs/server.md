@@ -10,11 +10,11 @@ One process, three listeners:
 |---|---|---|
 | HTTP API and web admin | `127.0.0.1:8080` (TCP) | Enrollment, server information, admin |
 | iroh endpoint | `0.0.0.0:443` (UDP) | Control channel with the agents (ALPN `banc/control/1`) |
-| iroh relay | `127.0.0.1:3340` (TCP) | Relay of the team's iroh traffic, enrolled machines only |
+| iroh relay | `127.0.0.1:3340` (TCP), reached through the HTTP port | Relay of the team's iroh traffic, enrolled machines only |
 
-TLS is terminated in front of the server. `packaging/server/Caddyfile` is an example: port 443, a Let's Encrypt certificate, `/relay`, `/ping` and `/generate_204` to the relay, everything else to the API. The plan asks for the server to obtain its certificate itself; that is left to phase 7, with the Docker Compose setup.
+The server runs in Docker (`packaging/server/README.md`). TLS is terminated in front of it, by Coolify's proxy or by the Caddy of `packaging/server/compose.yaml`. The HTTP port carries everything: the API, the web admin, and the relay's `/relay`, `/ping` and `/generate_204` paths, which it forwards to the relay's local listener. Publishing UDP 443 is optional: without it, agents reach the server through the relay.
 
-The server keeps in `data_dir`:
+The server keeps in `data_dir` (the `banc-data` Docker volume):
 
 - `banc.sqlite`: the database;
 - `server.key`: its iroh key, mode 0600. The VPS has no keychain;
@@ -75,8 +75,8 @@ Every change (admin created, admin key set, invitation created or revoked, machi
 
 ## First start
 
-1. Start the server. With no admin, it writes `data_dir/setup-token` (mode 0600) and logs the file path, never the token.
+1. Start the server. Without `public_url` in its configuration, it learns its address at step 2, from the HTTPS request of the first admin. With no admin, it writes `data_dir/setup-token` (mode 0600) and logs the file path, never the token.
 2. Open the web admin, enter the token, choose a name and a password (12 characters at least). The file is deleted.
 3. Register the admin key from the Banc window ("Clé d'administration", see `docs/workstation.md`). Until then the web admin refuses to create invitations.
 
-A systemd unit for the VPS is in `packaging/server/banc-server.service`; the full setup is step 1 of `docs/phase1-checklist.md`.
+The full setup on the VPS is step 1 of `docs/phase1-checklist.md`. `packaging/server/smoke-test.sh` starts the same Compose setup locally and checks it; PRs run it.

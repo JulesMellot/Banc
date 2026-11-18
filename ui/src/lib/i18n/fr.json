@@ -73,6 +73,7 @@
   "error.internal": "Erreur du serveur. Consultez ses journaux.",
   "error.unauthorized": "Votre session a expiré. Reconnectez-vous.",
   "error.bad_credentials": "Nom ou mot de passe incorrect.",
+  "error.public_url_unknown": "Ouvrez le serveur avec son adresse en https:// pour terminer l'installation.",
   "error.bad_setup_token": "Code d'installation incorrect.",
   "error.weak_password": "Mot de passe trop court : 12 caractères au moins.",
   "error.bad_name": "Nom invalide.",

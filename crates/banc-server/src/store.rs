@@ -160,6 +160,35 @@ pub fn delete_session(conn: &Connection, token_hash: &[u8; 32]) -> Result<()> {
     Ok(())
 }
 
+// ---------------------------------------------------------------- public address
+
+/// The public address learned from the first admin's request.
+pub fn public_url(conn: &Connection) -> Result<Option<String>> {
+    Ok(conn
+        .query_row(
+            "SELECT public_url FROM server_settings WHERE id = 1",
+            [],
+            |row| row.get(0),
+        )
+        .optional()?)
+}
+
+pub fn set_public_url(conn: &Connection, url: &str, now: i64) -> Result<()> {
+    conn.execute(
+        "INSERT INTO server_settings (id, public_url, updated_at) VALUES (1, ?1, ?2)
+         ON CONFLICT (id) DO UPDATE SET public_url = ?1, updated_at = ?2",
+        params![url, now],
+    )?;
+    log_event(
+        conn,
+        now,
+        Actor::Server,
+        "public_url_learned",
+        None,
+        &serde_json::json!({ "public_url": url }),
+    )
+}
+
 // ---------------------------------------------------------------- admin key
 
 pub fn admin_key(conn: &Connection) -> Result<Option<PublicKey>> {
