@@ -26,7 +26,7 @@ The full plan, phase by phase, is in `docs/PLAN.md`. Read it before any task. Wo
 - Stable Rust, 2021 edition, Cargo workspace.
 - Runtime: Tokio. The agent uses a `current_thread` runtime.
 - Peer-to-peer networking: `iroh` 1.x (connection by public key, NAT traversal, relay). Self-hosted relay on the VPS with `iroh-relay`.
-- File transfer: `iroh-blobs` if its version is stable at the start, otherwise an in-house protocol over iroh streams with BLAKE3 and streaming verification (`bao-tree`). Decision to be recorded here in phase 3.
+- File transfer: an in-house protocol over iroh streams with BLAKE3 and streaming verification (`bao-tree`), see the phase 3 decisions.
 - HTTP server: `axum`. Database: SQLite through `rusqlite` (`bundled` feature) and `rusqlite_migration`.
 - Interface: Tauri 2, Svelte + TypeScript frontend. Native system tray icon with `tray-icon` + `tao`, no web view.
 - System services: a systemd unit, a launchd property list and `windows-service`, written by `banc_platform::service` (the `service-manager` crate was dropped in phase 1, see the decisions).
@@ -142,6 +142,14 @@ Phase 2 decisions:
 - **Update status** (`banc_agent::update::Monitor`): the window shows what the update is doing and why it failed, and `Request::CheckUpdate` looks for a version at once and gives a failed version another chance. A hand-over that never takes over is reported instead of waiting forever.
 - **An agent replaced by hand restarts itself**: dragging a new `Banc.app` replaces the files, not the running service. The agent compares its program's date at each local status request (the tray icon asks every minute) and exits, and the service manager starts the new one. For agents too old to do this, the window offers to restart the service.
 - **Opening projects**: `WorkstationReport::can_open_projects` is the gate, shown in the window and the admin. Phase 4 calls it when projects exist. Banc does not download the Resolve installer yet.
+
+
+Phase 3 decisions:
+
+- **Transfer protocol of its own** (`banc_blobs::transfer`, ALPN `banc/blobs/1`) on `bao-tree` 0.17, not `iroh-blobs`: the latter is still at 0.x (0.105) and its file store needs `redb` and a multi-threaded runtime, which the agent does not run. `bao-tree` comes without its default features (they pull in `genawaiter` and `syn` 1).
+- **Groups of 16 KiB** (`BLOCK_SIZE`): the outboard keeps one pair of hashes per group, 0.4% of the file, and a transfer verifies and resumes at that grain. The hash is the plain BLAKE3 of the file, the same as the manifest's.
+- **Files stay where they are**: importing a project file writes only its outboard and a record (size, date) in the store. A different size or date makes the record void. The sender checks each group against the outboard before sending it, so a file damaged on its disk is reported, not spread.
+- **Resume**: a download writes only verified groups, and saves its progress every 64 MB and when it stops, data synced before the record. One request per stream; the receiver says which ranges it lacks.
 
 ## Commits and CI
 

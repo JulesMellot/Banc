@@ -6,7 +6,7 @@ Context: Banc is an internal tool for a company's salaried editors and colorists
 
 ## Where we are
 
-Updated 2026-11-18.
+Updated 2026-11-19.
 
 | Step (section 14) | Status |
 |---|---|
@@ -15,8 +15,9 @@ Updated 2026-11-18.
 | Prototypes P3 to P10 | Not started. |
 | Phase 1, server side | Done (PR #5): enrollment, invitations, machines, admin accounts, admin key registration, iroh endpoint with the control channel, relay restricted to the team, minimal web admin. See `docs/server.md`. |
 | Phase 1, workstation side | Coded and tested in CI: agent (machine key, enrollment, connection, heartbeat, inventory, Resolve detection, system service), window (`banc://` link, joining, workstation state, admin key with recovery code), session helper (tray icon on macOS and Windows), `idle-bench` extended. See `docs/workstation.md`. **Hand test on the three OSes pending**: `docs/phase1-checklist.md`. |
-| Phase 2, signed manifest | Coded and tested in CI: package store, manifest editor, signature in the window, delivery over iroh, installation (`copy`, `font`, `manual`, and the `pkg`, `msi`, `exe`, `deb`, `rpm`, `run` installers), machines-by-packages grid. **Hand test pending**: `docs/phase2-checklist.md`, with prototype P9 for the team's real plugins. Not done: detection rules, download of the Resolve installer. |
-| Phases 3 to 6 and 8 | Not started. |
+| Phase 2, signed manifest | Coded and tested in CI: package store, manifest editor, signature in the window, delivery over iroh, installation (`copy`, `font`, `manual`, and the `pkg`, `msi`, `exe`, `deb`, `rpm`, `run` installers), machines-by-packages grid. Updates, one-click publication, LUT, font and Fusion template confirmed by hand (2026-11-19). **Still to test by hand**: an OFX plugin, the security checks and the other OSes in `docs/phase2-checklist.md`, prototype P9 for the team's real plugins. Not done: detection rules, download of the Resolve installer. |
+| Phase 3, volume and files | Started: `banc-blobs` store (files hashed in place, outboards), verified transfer with resume (`banc/blobs/1`). Next: serving and fetching over iroh in the agent, the depot, source selection, then the volume after P1. |
+| Phases 4 to 6 and 8 | Not started. |
 | Phase 7, distribution and updates | Started ahead of plan: signed automatic updates with rollback, automatic releases, start at login. Remaining: signed and notarized installers, `.deb`, `.rpm`, AppImage, depot image, nightly backup. |
 
 Phase 1 acceptance criteria, against what exists:
