@@ -12,7 +12,7 @@ use std::time::Duration;
 use banc_proto::control::{self, close, AgentMessage, FrameError, ServerMessage};
 use banc_proto::local::Connection as ConnectionState;
 use banc_proto::machine::Inventory;
-use iroh::endpoint::{ConnectionError, Endpoint, RecvStream};
+use iroh::endpoint::{Connection, ConnectionError, Endpoint, RecvStream};
 use iroh::{EndpointAddr, RelayUrl};
 
 use crate::state::Enrolled;
@@ -85,13 +85,21 @@ async fn session(
     let connection = tokio::time::timeout(CONNECT_TIMEOUT, endpoint.connect(addr, control::ALPN))
         .await
         .map_err(|_| anyhow::anyhow!("timed out"))??;
-    let (mut send, mut recv) = connection.open_bi().await?;
     let mut inventory = shared.inventory();
     let hello = AgentMessage::Hello {
         agent_version: banc_proto::VERSION.to_owned(),
         inventory: inventory.clone(),
     };
-    control::write_frame(&mut send, &hello).await?;
+    let opened = async {
+        let (mut send, recv) = connection.open_bi().await?;
+        control::write_frame(&mut send, &hello).await?;
+        anyhow::Ok((send, recv))
+    }
+    .await;
+    let (mut send, mut recv) = match opened {
+        Ok(streams) => streams,
+        Err(error) => return closed_or(&connection, error),
+    };
     let welcome = tokio::select! {
         welcome = tokio::time::timeout(CONNECT_TIMEOUT, control::read_frame::<_, ServerMessage>(&mut recv)) => welcome,
         reason = connection.closed() => return Ok(end_of(&reason)),
@@ -110,7 +118,7 @@ async fn session(
         }
         Ok(Ok(Some(_))) => anyhow::bail!("welcome expected"),
         Ok(Ok(None)) => return Ok(end_of(&connection.closed().await)),
-        Ok(Err(error)) => return Err(error.into()),
+        Ok(Err(error)) => return closed_or(&connection, error.into()),
         Err(_) => anyhow::bail!("no welcome from the server"),
     };
     shared.set_connection(ConnectionState::Connected);
@@ -169,6 +177,16 @@ fn next_message(previous: &Inventory, current: &Inventory) -> AgentMessage {
         AgentMessage::Report {
             inventory: current.clone(),
         }
+    }
+}
+
+/// A step failed because the server closed the connection, which a revoked
+/// machine learns while its hello is still on the way: the server's reason
+/// decides, not the failed step.
+fn closed_or(connection: &Connection, error: anyhow::Error) -> anyhow::Result<End> {
+    match connection.close_reason() {
+        Some(reason) => Ok(end_of(&reason)),
+        None => Err(error),
     }
 }
 
