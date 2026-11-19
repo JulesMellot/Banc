@@ -26,7 +26,10 @@
 <section>
   <h2>{t('login.title')}</h2>
   <form onsubmit={submit}>
-    <label>{t('login.name')} <input bind:value={name} required autocomplete="username" /></label>
+    <label
+      >{t('login.name')}
+      <input bind:value={name} required autocomplete="username" spellcheck="false" /></label
+    >
     <label>
       {t('login.password')}
       <input type="password" bind:value={password} required autocomplete="current-password" />
@@ -35,15 +38,3 @@
     <button type="submit" disabled={busy}>{t('login.submit')}</button>
   </form>
 </section>
-
-<style>
-  form {
-    display: grid;
-    gap: 0.8rem;
-    max-width: 24rem;
-  }
-  label {
-    display: grid;
-    gap: 0.2rem;
-  }
-</style>

@@ -28,8 +28,14 @@
   <h2>{t('setup.title')}</h2>
   <p>{t('setup.intro')}</p>
   <form onsubmit={submit}>
-    <label>{t('setup.token')} <input bind:value={token} required autocomplete="off" /></label>
-    <label>{t('login.name')} <input bind:value={name} required autocomplete="username" /></label>
+    <label
+      >{t('setup.token')}
+      <input bind:value={token} required autocomplete="off" spellcheck="false" /></label
+    >
+    <label
+      >{t('login.name')}
+      <input bind:value={name} required autocomplete="username" spellcheck="false" /></label
+    >
     <label>
       {t('login.password')}
       <input
@@ -45,15 +51,3 @@
     <button type="submit" disabled={busy}>{t('setup.submit')}</button>
   </form>
 </section>
-
-<style>
-  form {
-    display: grid;
-    gap: 0.8rem;
-    max-width: 24rem;
-  }
-  label {
-    display: grid;
-    gap: 0.2rem;
-  }
-</style>
