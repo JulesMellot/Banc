@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Machine, MachinePackages, Manifest } from '../lib/api';
+  import type { Machine, MachinePackages, Manifest, PackageState } from '../lib/api';
   import { t } from '../lib/i18n';
   import { gridCell, gridColumns } from '../lib/manifest';
 
@@ -12,12 +12,26 @@
   const columns = $derived(gridColumns(manifest));
   const active = $derived(machines.filter((machine) => machine.revoked_at === null));
   const lineOf = (id: number) => grid.find((line) => line.machine_id === id);
+
+  function tone(state: PackageState | undefined): string {
+    switch (state) {
+      case 'installed':
+        return 'ok';
+      case 'failed':
+        return 'bad';
+      case 'pending':
+      case 'manual':
+        return 'warn';
+      default:
+        return 'bare';
+    }
+  }
 </script>
 
-<section>
+<section class="flush">
   <h2>{t('grid.title')}</h2>
   {#if !manifest}
-    <p>{t('grid.empty')}</p>
+    <p class="empty">{t('grid.empty')}</p>
   {:else}
     <div class="scroll">
       <table>
@@ -25,7 +39,7 @@
           <tr>
             <th>{t('grid.machine')}</th>
             <th>{t('grid.manifest')}</th>
-            {#each columns as column (column)}<th>{column}</th>{/each}
+            {#each columns as column (column)}<th><code translate="no">{column}</code></th>{/each}
           </tr>
         </thead>
         <tbody>
@@ -33,7 +47,7 @@
             {@const line = lineOf(machine.id)}
             <tr>
               <td>
-                {machine.name}
+                <strong>{machine.name}</strong>
                 {#if line?.report.resolve_mismatch}
                   <br /><small class="failed">
                     {t('grid.resolve_mismatch', {
@@ -45,11 +59,18 @@
                   <br /><small class="failed">{t('grid.refused')}</small>
                 {/if}
               </td>
-              <td>{line?.report.manifest_version ?? '–'}</td>
+              <td class="num">{line?.report.manifest_version ?? '–'}</td>
               {#each columns as column (column)}
                 {@const cell = gridCell(line, column)}
-                <td class={cell?.state ?? 'unknown'} title={cell?.error ?? ''}>
-                  {cell ? t(`package_state.${cell.state}`) : t('package_state.unknown')}
+                <td title={cell?.error ?? ''}>
+                  {#if cell && cell.state !== 'unavailable'}
+                    <span class="pill {tone(cell.state)}">{t(`package_state.${cell.state}`)}</span>
+                  {:else}
+                    <span class="none" title={t(`package_state.${cell?.state ?? 'unknown'}`)}>
+                      <span aria-hidden="true">—</span>
+                      <span class="sr">{t(`package_state.${cell?.state ?? 'unknown'}`)}</span>
+                    </span>
+                  {/if}
                 </td>
               {/each}
             </tr>
@@ -61,21 +82,33 @@
 </section>
 
 <style>
+  .flush {
+    padding: 1.1rem 0 0;
+    overflow: hidden;
+  }
+  h2 {
+    padding: 0 1.25rem;
+  }
   .scroll {
     overflow-x: auto;
   }
-  .installed {
-    color: #1b7a3a;
+  td {
+    white-space: nowrap;
+  }
+  .num {
+    font-variant-numeric: tabular-nums;
   }
   .failed {
-    color: #b00020;
+    color: var(--bad);
   }
-  .pending,
-  .manual,
-  .unavailable {
-    color: #8a5a00;
+  .none {
+    color: var(--text-3);
   }
-  .unknown {
-    color: #999;
+  .sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
   }
 </style>

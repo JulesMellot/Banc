@@ -41,6 +41,10 @@
     busy = false;
   }
 
+  function tone(status: InviteRow['status']): string {
+    return status === 'pending' ? 'accent' : status === 'used' ? 'ok' : '';
+  }
+
   async function copy(field: string, text: string) {
     await navigator.clipboard.writeText(text);
     copied = field;
@@ -48,10 +52,18 @@
 </script>
 
 <section>
-  <h2>{t('invites.title')}</h2>
+  <h2>{t('invites.new')}</h2>
   {#if canInvite}
-    <form onsubmit={submit}>
-      <label>{t('invites.user_name')} <input bind:value={userName} required /></label>
+    <form class="new" onsubmit={submit}>
+      <label class="grow">
+        {t('invites.user_name')}
+        <input
+          bind:value={userName}
+          required
+          autocomplete="off"
+          placeholder={t('invites.user_placeholder')}
+        />
+      </label>
       <label>
         {t('invites.person_role')}
         <select bind:value={personRole}>
@@ -71,78 +83,147 @@
       <button type="submit" disabled={busy}>{t('invites.submit')}</button>
     </form>
   {:else}
-    <p>{t('invites.need_key')}</p>
+    <p class="banner warn">{t('invites.need_key')}</p>
   {/if}
 
   {#if created}
-    <div class="created">
-      <p>{t('invites.created', { name: created.invite.user_name })}</p>
+    <div class="created" aria-live="polite">
+      <div class="created-head">
+        <p>{t('invites.created', { name: created.invite.user_name })}</p>
+        <button class="ghost small" onclick={() => (created = null)}>{t('common.close')}</button>
+      </div>
       {#each [['link', created.link], ['key', created.key], ['server', created.server]] as const as [field, value] (field)}
-        <p>
-          {t(`invites.${field}`)}<br />
-          <code>{value}</code>
-          <button onclick={() => copy(field, value)}>
+        <div class="secret">
+          <span class="secret-label">{t(`invites.${field}`)}</span>
+          <code translate="no">{value}</code>
+          <button class="small" class:primary={field === 'link'} onclick={() => copy(field, value)}>
             {copied === field ? t('common.copied') : t('common.copy')}
           </button>
-        </p>
+        </div>
       {/each}
     </div>
   {/if}
+</section>
 
+<section class="flush">
+  <h2>{t('invites.history')}</h2>
   {#if invites.length === 0}
-    <p>{t('invites.empty')}</p>
+    <p class="empty">{t('invites.empty')}</p>
   {:else}
-    <table>
-      <thead>
-        <tr>
-          <th>{t('invites.user_name')}</th>
-          <th>{t('invites.person_role')}</th>
-          <th>{t('invites.status')}</th>
-          <th>{t('invites.created_at')}</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {#each invites as invite (invite.id)}
+    <div class="scroll">
+      <table>
+        <thead>
           <tr>
-            <td>{invite.user_name}</td>
-            <td>
-              {t(`person_role.${invite.person_role}`)}<br />
-              <small>{t(`machine_role.${invite.machine_role}`)}</small>
-            </td>
-            <td>{t(`invite_status.${invite.status}`)}</td>
-            <td>{relativeTime(invite.created_at, now)}</td>
-            <td>
-              {#if invite.status === 'pending'}
-                <button onclick={() => onRevoke(invite)}>{t('invites.revoke')}</button>
-              {/if}
-            </td>
+            <th>{t('invites.user_name')}</th>
+            <th>{t('invites.person_role')}</th>
+            <th>{t('invites.status')}</th>
+            <th>{t('invites.created_at')}</th>
+            <th><span class="sr">{t('invites.revoke')}</span></th>
           </tr>
-        {/each}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {#each invites as invite (invite.id)}
+            <tr>
+              <td><strong>{invite.user_name}</strong></td>
+              <td>
+                {t(`person_role.${invite.person_role}`)}<br />
+                <small>{t(`machine_role.${invite.machine_role}`)}</small>
+              </td>
+              <td>
+                <span class="pill {tone(invite.status)}">
+                  {t(`invite_status.${invite.status}`)}
+                </span>
+              </td>
+              <td><small>{relativeTime(invite.created_at, now)}</small></td>
+              <td class="actions">
+                {#if invite.status === 'pending'}
+                  <button class="small ghost danger" onclick={() => onRevoke(invite)}>
+                    {t('invites.revoke')}
+                  </button>
+                {/if}
+              </td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    </div>
   {/if}
 </section>
 
 <style>
-  form {
+  .new {
     display: flex;
     flex-wrap: wrap;
     align-items: end;
-    gap: 1rem;
-    margin-bottom: 1rem;
+    gap: 0.9rem;
+    max-width: none;
   }
-  label {
-    display: grid;
-    gap: 0.2rem;
+  .grow {
+    flex: 1 1 14rem;
+  }
+  .new label:not(.grow) {
+    flex: 0 1 12rem;
+  }
+  .banner {
+    margin: 0;
   }
   .created {
-    background: #eef6ee;
-    border-radius: 6px;
-    padding: 0.5rem 1rem;
-    margin-bottom: 1rem;
+    margin-top: 1.1rem;
+    padding: 1rem;
+    border-radius: var(--radius);
+    background: var(--ok-soft);
+    display: grid;
+    gap: 0.6rem;
   }
-  code {
-    word-break: break-all;
+  .created-head {
+    display: flex;
+    align-items: start;
+    gap: 1rem;
+  }
+  .created-head p {
+    flex: 1;
+    margin: 0;
+    font-weight: 550;
+  }
+  .secret {
+    display: grid;
+    grid-template-columns: 11rem minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 0.6rem;
+    background: var(--surface);
+    border-radius: var(--radius-sm);
+  }
+  .secret-label {
+    color: var(--text-2);
+    font-size: 0.85rem;
+  }
+  @media (max-width: 40rem) {
+    .secret {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+    .secret-label {
+      grid-column: 1 / -1;
+    }
+  }
+  .flush {
+    padding: 1.1rem 0 0;
+    overflow: hidden;
+  }
+  .flush h2 {
+    padding: 0 1.25rem;
+  }
+  .scroll {
+    overflow-x: auto;
+  }
+  .actions {
+    text-align: right;
+  }
+  .sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
   }
 </style>

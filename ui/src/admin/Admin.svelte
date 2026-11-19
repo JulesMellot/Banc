@@ -47,49 +47,75 @@
   onMount(load);
 </script>
 
-<header>
-  <h1>{t('app.name')} <small>{t('admin.title')}</small></h1>
-  {#if admin}
-    <span>{admin.name}</span>
-    <button onclick={logout}>{t('admin.logout')}</button>
-  {/if}
-</header>
-
-<main>
-  {#if loading}
-    <p>{t('common.loading')}</p>
-  {:else if error}
-    <p role="alert">{error}</p>
-    <button onclick={load}>{t('common.retry')}</button>
-  {:else if info?.setup_required}
-    <Setup onDone={signedIn} />
-  {:else if !admin}
-    <Login onDone={signedIn} />
-  {:else}
-    <Dashboard onSessionExpired={() => (admin = null)} />
-  {/if}
-</main>
+{#if admin && !loading && !error}
+  <Dashboard {admin} onLogout={logout} onSessionExpired={() => (admin = null)} />
+{:else}
+  <main class="auth">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">B</span>
+      <div>
+        <strong>{t('app.name')}</strong>
+        <small>{t('admin.title')}</small>
+      </div>
+    </div>
+    {#if loading}
+      <p class="muted" aria-live="polite">{t('common.loading')}</p>
+    {:else if error}
+      <section>
+        <p role="alert">{error}</p>
+        <button onclick={load}>{t('common.retry')}</button>
+      </section>
+    {:else if info?.setup_required}
+      <Setup onDone={signedIn} />
+    {:else}
+      <Login onDone={signedIn} />
+    {/if}
+    <p class="tagline">{t('app.tagline')}</p>
+  </main>
+{/if}
 
 <style>
-  header {
+  .auth {
+    max-width: 26rem;
+    margin: 0 auto;
+    padding: 12vh 1rem 2rem;
+  }
+  .brand {
     display: flex;
     align-items: center;
-    gap: 1rem;
-    padding: 0 2rem;
-    background: white;
-    border-bottom: 1px solid #ddd;
+    gap: 0.7rem;
+    margin-bottom: 1.5rem;
   }
-  header h1 {
-    flex: 1;
-    font-size: 1.3rem;
+  .brand div {
+    display: grid;
+    line-height: 1.2;
   }
-  small {
-    font-weight: normal;
-    color: #666;
+  .brand strong {
+    font-size: 1.15rem;
   }
-  main {
-    max-width: 70rem;
-    margin: 2rem auto;
-    padding: 0 1rem;
+  .tagline {
+    margin-top: 1.5rem;
+    color: var(--text-3);
+    font-size: 0.85rem;
+    text-align: center;
+  }
+  :global(.logo) {
+    display: grid;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 8px;
+    background: var(--accent);
+    color: var(--accent-text);
+    font-weight: 750;
+    font-size: 1rem;
+    flex: none;
+  }
+  .auth :global(form) {
+    max-width: none;
+  }
+  .auth :global(button[type='submit']) {
+    width: 100%;
+    margin-top: 0.25rem;
   }
 </style>
